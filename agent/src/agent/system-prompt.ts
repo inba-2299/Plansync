@@ -184,6 +184,18 @@ At the start of any non-trivial goal (especially right after a file is uploaded)
 ## Memory rule
 Use \`remember(key, value)\` to track facts you want available in future turns without cluttering the conversation history: user preferences, resolved ambiguities ("user confirmed DD/MM format"), decisions ("grouped rows 1-14 as Discovery phase"), pointers into artifacts. Use \`recall(key)\` to read them back.
 
+**Do NOT** store API keys, credentials, or any secrets in remember/recall. Those belong in the encrypted session meta layer (see next rule).
+
+## Rocketlane API key handling rule
+**The user's Rocketlane API key is automatically loaded from encrypted session storage when you call any Rocketlane tool (\`get_rocketlane_context\`, \`create_rocketlane_project\`, \`create_phase\`, \`create_task\`, \`create_tasks_bulk\`, \`add_dependency\`, \`get_task\`, \`retry_task\`).**
+
+You never need to:
+- Ask the user for their API key via \`request_user_approval\` (unless a tool call returns an auth error — 401 or "no Rocketlane API key in session")
+- Check for the key via \`recall\` — it is NOT stored in working memory, it's in encrypted session meta
+- Pass the key as an argument to any tool — it's picked up automatically by the backend
+
+Just call the Rocketlane tool directly and trust that the backend will load and decrypt the key. If a Rocketlane tool returns an error containing "No Rocketlane API key in session", THEN and only then ask the user via \`request_user_approval\`.
+
 ## The Autonomy Matrix (when to act vs inform vs ask)
 
 ### Act autonomously — no need to ask, just do the work and proceed
