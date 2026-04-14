@@ -6,6 +6,7 @@ import { putArtifact } from './memory/artifacts';
 import { acquireLock } from './memory/lock';
 import { startSseStream, makeEmitter, endSseStream } from './lib/sse';
 import { runAgentLoop } from './agent/loop';
+import { encrypt } from './lib/crypto';
 import type { CsvArtifactContent } from './tools/parse-csv';
 
 const app = express();
@@ -58,7 +59,7 @@ app.get('/', (_req: Request, res: Response) => {
 app.get('/health', (_req: Request, res: Response) => {
   res.json({
     status: 'ok',
-    version: '0.1.0',
+    version: '0.1.1',
     env: {
       anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
       redis: Boolean(process.env.UPSTASH_REDIS_REST_URL),
@@ -272,6 +273,33 @@ app.post('/agent', async (req: Request, res: Response) => {
   } finally {
     await lock.release();
     endSseStream(res);
+  }
+});
+
+// ---------- POST /session/:id/apikey ----------
+//
+// Encrypts the user's Rocketlane API key with AES-256-GCM and stores it on
+// the session meta. Called by the frontend after the user submits their key
+// via the ApiKeyCard. Also used by test scripts to pre-populate the session
+// key without going through the UI.
+//
+// Body: { apiKey: string }
+
+app.post('/session/:id/apikey', async (req: Request, res: Response) => {
+  try {
+    const sessionId = req.params.id;
+    const apiKey = typeof req.body?.apiKey === 'string' ? req.body.apiKey : '';
+    if (!sessionId || !apiKey) {
+      res.status(400).json({ error: 'sessionId (path) and apiKey (body) required' });
+      return;
+    }
+    const session = await loadSession(sessionId);
+    session.meta.rlApiKeyEnc = encrypt(apiKey);
+    await saveSession(sessionId, session);
+    res.json({ ok: true, sessionId, keyLength: apiKey.length });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
   }
 });
 
