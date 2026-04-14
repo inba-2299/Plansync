@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Architect AI - Conversational Upload</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "primary-container": "#3c59fd",
+                    "on-tertiary-fixed-variant": "#5a00c6",
+                    "surface": "#faf8ff",
+                    "inverse-primary": "#bbc3ff",
+                    "surface-container-lowest": "#ffffff",
+                    "tertiary-fixed": "#eaddff",
+                    "surface-container-highest": "#dae2fd",
+                    "on-secondary": "#ffffff",
+                    "on-secondary-fixed-variant": "#2f2ebe",
+                    "surface-variant": "#dae2fd",
+                    "on-secondary-container": "#fffbff",
+                    "secondary": "#4648d4",
+                    "secondary-fixed-dim": "#c0c1ff",
+                    "surface-container-low": "#f2f3ff",
+                    "inverse-surface": "#283044",
+                    "background": "#faf8ff",
+                    "primary-fixed-dim": "#bbc3ff",
+                    "error": "#ba1a1a",
+                    "on-tertiary": "#ffffff",
+                    "on-surface": "#131b2e",
+                    "on-background": "#131b2e",
+                    "on-tertiary-fixed": "#25005a",
+                    "error-container": "#ffdad6",
+                    "outline-variant": "#c3c6d7",
+                    "surface-bright": "#faf8ff",
+                    "on-primary": "#ffffff",
+                    "on-surface-variant": "#434655",
+                    "inverse-on-surface": "#eef0ff",
+                    "tertiary-fixed-dim": "#d2bbff",
+                    "tertiary-container": "#8343f4",
+                    "surface-tint": "#2848ee",
+                    "on-primary-fixed-variant": "#002ccd",
+                    "primary-fixed": "#dee0ff",
+                    "secondary-fixed": "#e1e0ff",
+                    "surface-container-high": "#e2e7ff",
+                    "on-error": "#ffffff",
+                    "surface-dim": "#d2d9f4",
+                    "outline": "#737686",
+                    "on-secondary-fixed": "#07006c",
+                    "on-primary-container": "#f0efff",
+                    "on-primary-fixed": "#000f5d",
+                    "tertiary": "#6a1edb",
+                    "primary": "#173ce5",
+                    "on-error-container": "#93000a",
+                    "surface-container": "#eaedff",
+                    "secondary-container": "#6063ee",
+                    "on-tertiary-container": "#f7edff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "fontFamily": {
+                    "headline": ["Manrope"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3 { font-family: 'Manrope', sans-serif; }
+    </style>
+</head>
+<body class="bg-surface text-on-surface flex h-screen overflow-hidden">
+<!-- Sidebar: Managed by SideNavBar JSON logic -->
+<aside class="fixed left-0 top-0 h-screen flex flex-col p-4 bg-[#f2f3ff] w-64 border-r-0 z-50">
+<div class="flex items-center gap-3 mb-8 px-2">
+<div class="w-10 h-10 rounded-xl overflow-hidden">
+<img alt="Agent Avatar" class="w-full h-full object-cover" data-alt="close up of a modern sleek robot face with blue glowing eyes and white polished casing" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDw4yMKBqmGoiS_lSa-aS_57kOHpX1LDkELhy9UdzGlQmGR1yNpR0zIqnWLKeAkcZ0gwp5IQTDiacvGCYDCXhGpHiUIDD7J_4XHscZOqt0ZoHCRcrX0b9qsp3akFNPvBTu6yBMHhZ1CUlDQzLjjBy1epZ-zFV4l-mkTba7trtdRRiT-mt5_8gEGKxERwMfOR4SoZ_la3iA0mMl88EgdJbRhWM3jNIhT50ln10e4Z_nmUFko6dZ5VydY_eu1bE9A95sah_HsiZm0ze4"/>
+</div>
+<div>
+<h2 class="font-['Manrope'] font-bold text-[#173ce5] text-sm leading-none">Project Curator</h2>
+<p class="text-[10px] text-slate-500 font-medium">Connected to Rocketlane</p>
+</div>
+</div>
+<nav class="flex-1 space-y-1">
+<div class="px-2 py-2 mb-2">
+<span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Main Menu</span>
+</div>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-white/50 transition-all duration-200 font-['Inter'] text-sm font-medium" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="dashboard">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 bg-white text-[#173ce5] font-bold rounded-lg shadow-sm font-['Inter'] text-sm transition-all duration-200" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="tactic">tactic</span>
+<span>Active Plans</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-white/50 transition-all duration-200 font-['Inter'] text-sm font-medium" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="folder_open">folder_open</span>
+<span>Resource Library</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-white/50 transition-all duration-200 font-['Inter'] text-sm font-medium" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="history">history</span>
+<span>Agent History</span>
+</a>
+</nav>
+<div class="mt-auto space-y-1 border-t border-slate-200/50 pt-4">
+<button class="w-full flex items-center justify-center gap-2 py-2.5 bg-primary text-white rounded-xl text-sm font-bold shadow-md hover:opacity-90 transition-opacity mb-6">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
+                New Strategy
+            </button>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-white/50 transition-all duration-200 font-['Inter'] text-sm font-medium" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="help">help</span>
+<span>Support</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-white/50 transition-all duration-200 font-['Inter'] text-sm font-medium" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="archive">archive</span>
+<span>Archive</span>
+</a>
+</div>
+</aside>
+<!-- Main Canvas -->
+<main class="ml-64 flex-1 flex flex-col bg-surface relative overflow-hidden">
+<!-- TopAppBar Navigation -->
+<header class="flex justify-between items-center w-full px-8 py-4 bg-[#faf8ff] z-40">
+<div class="flex items-center gap-2">
+<h1 class="font-['Manrope'] font-extrabold text-xl text-[#173ce5] tracking-tight">Architect AI</h1>
+<span class="px-2 py-0.5 bg-primary-container text-on-primary-container text-[10px] font-bold rounded-md uppercase">Studio</span>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-1 text-slate-500">
+<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+<span class="text-[11px] font-bold uppercase tracking-widest">Active Session</span>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 text-slate-500 hover:bg-[#f2f3ff] rounded-full transition-colors">
+<span class="material-symbols-outlined" data-icon="account_tree">account_tree</span>
+</button>
+<button class="p-2 text-slate-500 hover:bg-[#f2f3ff] rounded-full transition-colors relative">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full"></span>
+</button>
+<button class="p-2 text-slate-500 hover:bg-[#f2f3ff] rounded-full transition-colors">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<div class="w-10 h-10 rounded-full border-2 border-primary-container p-0.5">
+<img alt="User avatar" class="w-full h-full rounded-full object-cover" data-alt="professional portrait of a man in his 30s with a clean background and soft lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBdMmBFu-qGRI4-owL95hn3BCNhvZDAO5E5RGhcTuDf1cGUMmtBB2GffEi3_-dcY91TXfvI9_6tQomMf7GChInmjVuZRC5UXmusLdukl_yCWbFTwOD7r_XMb_Hyyuo6bz8J5cUwy3iCr7QFmswkdZLRQ4DzgRcXz9d9mUiXdLyXveBypfcC3NNsBfMAAWum9J91jkq__hjIocNZmhYneN06sy00cXa3hvWxhyQepypUiTHYL3W-ljseaD4dSdbDAY53eCxw7Lf4arM"/>
+</div>
+</div>
+</div>
+</header>
+<!-- Chat Flow Area -->
+<div class="flex-1 overflow-y-auto px-8 pb-32 space-y-8 max-w-5xl mx-auto w-full pt-8">
+<!-- System/Agent Reasoning Block -->
+<div class="flex gap-4">
+<div class="w-10 h-10 rounded-xl bg-primary-container flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-white" data-icon="auto_awesome">auto_awesome</span>
+</div>
+<div class="bg-surface-container-highest rounded-tr-xl rounded-br-xl rounded-bl-xl p-6 max-w-2xl shadow-sm">
+<h4 class="font-headline font-bold text-sm text-primary mb-2 flex items-center gap-2">
+<span class="material-symbols-outlined text-xs" data-icon="psychology">psychology</span>
+                        Reasoning Process
+                    </h4>
+<p class="text-on-surface-variant body-md leading-relaxed">
+                        I've analyzed the initial project parameters. To proceed with the architectural blueprinting, I need to ingest the primary data source to map dependencies, resource allocation, and timeline constraints.
+                    </p>
+<div class="mt-4 flex gap-2">
+<span class="px-2 py-1 bg-surface-container-lowest text-[10px] font-semibold text-slate-500 rounded border border-outline-variant/20 uppercase tracking-tighter">Phase 1: Discovery</span>
+<span class="px-2 py-1 bg-surface-container-lowest text-[10px] font-semibold text-slate-500 rounded border border-outline-variant/20 uppercase tracking-tighter">Status: Awaiting Data</span>
+</div>
+</div>
+</div>
+<!-- User Message -->
+<div class="flex gap-4 flex-row-reverse">
+<div class="w-10 h-10 rounded-xl bg-inverse-surface flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-white" data-icon="person">person</span>
+</div>
+<div class="bg-primary rounded-tl-xl rounded-bl-xl rounded-br-xl p-5 max-w-xl text-on-primary">
+<p class="body-md">Sounds good. I'm ready to upload the latest Q3 project plan for the infrastructure overhaul.</p>
+</div>
+</div>
+<!-- Main Agent Call to Action Message -->
+<div class="flex gap-4">
+<div class="w-10 h-10 rounded-xl bg-primary-container flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-white" data-icon="smart_toy">smart_toy</span>
+</div>
+<div class="space-y-6 w-full max-w-2xl">
+<div class="bg-surface-container-highest rounded-tr-xl rounded-br-xl rounded-bl-xl p-6 shadow-sm border border-primary/5">
+<p class="text-on-surface body-md font-medium text-lg leading-snug">
+                            Ready to go! Please upload your <span class="text-primary font-bold">CSV</span> or <span class="text-primary font-bold">Excel</span> project plan.
+                        </p>
+<p class="text-on-surface-variant body-md mt-2">
+                            I will automatically parse headers, identify critical paths, and suggest immediate optimizations.
+                        </p>
+</div>
+<!-- File Upload Bento Section -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+<div class="md:col-span-2 group relative bg-surface-container-low border-2 border-dashed border-outline-variant/30 rounded-3xl p-12 transition-all hover:bg-white hover:border-primary/40 flex flex-col items-center justify-center cursor-pointer">
+<div class="w-16 h-16 rounded-full bg-primary-fixed flex items-center justify-center mb-4 transition-transform group-hover:scale-110">
+<span class="material-symbols-outlined text-primary text-3xl" data-icon="cloud_upload">cloud_upload</span>
+</div>
+<h3 class="font-headline font-bold text-lg text-on-surface mb-1">Drag and drop file</h3>
+<p class="text-on-surface-variant text-sm mb-6">Support for .xlsx, .csv, and .xls (Max 25MB)</p>
+<button class="px-8 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all flex items-center gap-2">
+<span class="material-symbols-outlined" data-icon="attach_file">attach_file</span>
+                                Browse Files
+                            </button>
+</div>
+<!-- Mini Info Cards -->
+<div class="bg-surface-container-lowest p-5 rounded-2xl border border-outline-variant/10 shadow-sm flex items-start gap-4">
+<div class="p-2 bg-tertiary-fixed rounded-lg">
+<span class="material-symbols-outlined text-tertiary" data-icon="security">security</span>
+</div>
+<div>
+<p class="text-xs font-bold uppercase text-slate-400 tracking-wider mb-1">Privacy</p>
+<p class="text-xs text-on-surface-variant leading-tight">Your data is encrypted end-to-end and never used for training models.</p>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-5 rounded-2xl border border-outline-variant/10 shadow-sm flex items-start gap-4">
+<div class="p-2 bg-secondary-fixed rounded-lg">
+<span class="material-symbols-outlined text-secondary" data-icon="electric_bolt">electric_bolt</span>
+</div>
+<div>
+<p class="text-xs font-bold uppercase text-slate-400 tracking-wider mb-1">Auto-Parsing</p>
+<p class="text-xs text-on-surface-variant leading-tight">Agent will detect Gantt dependencies and task owners instantly.</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Processing Placeholder (Hidden state made visible for design) -->
+<div class="flex gap-4 opacity-60">
+<div class="w-10 h-10 rounded-xl bg-surface-container-highest flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-slate-400" data-icon="hourglass_empty">hourglass_empty</span>
+</div>
+<div class="bg-surface-container-low rounded-tr-xl rounded-br-xl rounded-bl-xl px-6 py-4 flex items-center gap-3">
+<div class="flex gap-1">
+<span class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce"></span>
+<span class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:0.2s]"></span>
+<span class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:0.4s]"></span>
+</div>
+<span class="text-sm font-medium text-on-surface-variant">Waiting for input...</span>
+</div>
+</div>
+</div>
+<!-- Floating Chat Input Bar -->
+<div class="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-3xl px-6 z-50">
+<div class="bg-surface-container-low/80 backdrop-blur-xl border border-outline-variant/20 rounded-3xl p-2 shadow-2xl flex items-center gap-2">
+<button class="p-3 text-slate-500 hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="add_circle">add_circle</span>
+</button>
+<input class="flex-1 bg-transparent border-none focus:ring-0 text-sm font-medium placeholder-slate-400" placeholder="Message Project Curator..." type="text"/>
+<button class="p-3 text-slate-400 hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="mic">mic</span>
+</button>
+<button class="w-10 h-10 bg-primary text-white rounded-2xl flex items-center justify-center shadow-lg shadow-primary/20 hover:scale-105 transition-transform">
+<span class="material-symbols-outlined" data-icon="send">send</span>
+</button>
+</div>
+<p class="text-[10px] text-center mt-3 text-slate-400 font-medium">Architect AI can make mistakes. Verify critical project data.</p>
+</div>
+<!-- Decorative Background Element -->
+<div class="absolute -bottom-20 -right-20 w-96 h-96 bg-primary/5 rounded-full blur-[100px] pointer-events-none"></div>
+<div class="absolute top-40 -left-20 w-64 h-64 bg-tertiary/5 rounded-full blur-[80px] pointer-events-none"></div>
+</main>
+</body></html>

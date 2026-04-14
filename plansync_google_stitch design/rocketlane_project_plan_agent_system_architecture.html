@@ -1,0 +1,62 @@
+System Architecture Document
+Rocketlane Project Plan Agent
+Version 1.1
+Date April 14, 2026
+Author Inbaraj B
+Status Architecture locked. Tools defined. Autonomy boundaries and UI/UX pending.
+
+1. Project Overview
+1.1 What We're Building
+An AI agent that reads a project plan from a CSV/Excel file and creates it as a fully structured project in Rocketlane — with phases, tasks, subtasks at any nesting depth, milestones, and dependencies.
+This is NOT a wizard-style import tool with fixed steps. It is a conversational agent that reasons about the uploaded plan, asks the user questions when uncertain, validates its own work, recovers from failures, and executes autonomously with human approval at key decision points.
+
+1.2 Why It Exists
+Rocketlane has no native CSV import feature for project plans. Implementation teams maintain plans in Excel/Smartsheet/Asana and manually recreate them in Rocketlane. This agent eliminates that manual work while adding intelligence — detecting hierarchy, suggesting milestones, handling deep nesting, and setting dependencies.
+
+1.3 Design Principles
+1. Agent, not app — the agent drives the flow, the user guides it
+2. Generic, not hardcoded — works for ANY project plan, not a specific client
+3. No silent decisions — deep nesting, milestones, and structure changes always require user confirmation
+4. No silent drops — orphan items are grouped under “Ungrouped Tasks” and flagged, never deleted
+5. Rocketlane is the system of record — the agent is a translator, not a data store
+6. Fail gracefully — show what succeeded, retry what failed, never leave the user guessing
+
+2. Tech Stack
+Layer Technology Why This Choice
+Frontend React (Next.js 14, App Router) Conversational UI with rich components. Single codebase.
+Backend Next.js API routes (Vercel) Stateless, auto-scaling, zero ops.
+Agent Brain Claude Sonnet via Messages API ReAct pattern. Stable API, tool use.
+State Upstash Redis Serverless Redis, HTTP client, TTL-based expiry.
+File Parsing SheetJS (xlsx) — server-side Handles CSV + Excel in one library.
+Execution Rocketlane API System of record. Projects, phases, tasks.
+Styling Tailwind CSS Utility-first, fast to build.
+Errors Sentry (@sentry/nextjs) Runtime error tracking. 10-min setup.
+Metrics Axiom (if time permits) Vercel-native. API latency, token usage.
+Hosting Vercel Native Next.js. Free tier. Automatic HTTPS.
+Custom App Rocketlane Custom Apps (.zip) Agent embedded inside RL via iframe.
+
+3. Backend Architecture
+3.1 Stateless Serverless with External State
+The backend runs as serverless functions on Vercel. Each API route is stateless — it reads session state from Redis, processes the request, writes updated state back to Redis, and returns the response. No in-memory state between requests.
+External services: Anthropic API (agent brain), Rocketlane API (execution target), Upstash Redis (session memory).
+
+4. Data Flow
+4.1 Session Lifecycle
+1. User opens agent URL → sessionId generated
+2. User provides API key → validate_rocketlane_connection
+3. User uploads CSV/Excel → /api/upload parses with SheetJS → Claude analyses → validate_plan_structure (Gate 1)
+4. User reviews plan → confirms phases, milestones, nesting → validate again (Gate 2)
+5. Execution → create_rocketlane_project → execute_creation_pass (Pass 1) → execute_dependency_pass (Pass 2)
+6. Complete → get_execution_summary → user downloads log, visits RL project
+
+5. External API Integrations
+Rocketlane API confirmed endpoints for Project, Phase, Task, Subtask, Milestone, and Dependencies.
+
+6. Security
+Anthropic/Rocketlane keys managed server-side. 48h session TTL in Redis. Session isolation via unique IDs.
+
+7. Hosting and Deployment
+Primary: Vercel standalone. Bonus: Rocketlane Custom App (.zip).
+
+8. Submission Deliverables
+Live agent, Pre-built RL project, Video walkthrough, BRD PDF, Custom App .zip, Demo CSV, Template files, Source code, Architecture docs.

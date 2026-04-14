@@ -97,6 +97,8 @@ export interface SessionMeta {
   /** AES-GCM encrypted Rocketlane API key (never stored in plain text) */
   rlApiKeyEnc?: string;
   rlWorkspaceId?: number;
+  /** Real Rocketlane project ID after create_rocketlane_project succeeds */
+  rlProjectId?: number;
 }
 
 export interface ExecLogEntry {
@@ -138,13 +140,20 @@ export interface Artifact<T = unknown> {
  * session.remember, create_phase adds to session.idmap). The dispatcher
  * persists session after every turn via saveSession().
  *
- * Note: Session is an opaque type here to avoid circular imports.
- * Tool files import Session from '../memory/session' directly.
+ * `getRlClient()` is lazy — the first caller in a turn instantiates a
+ * RocketlaneClient with the decrypted API key; subsequent callers in the
+ * same turn get the same instance (cached in the loop's closure). Tools
+ * that don't touch Rocketlane never call it.
+ *
+ * RlClient is typed as `unknown` here to avoid a circular import between
+ * types.ts and rocketlane/client.ts. Each tool file that uses it imports
+ * the real type from '../rocketlane/client' and casts via a thin helper.
  */
 export interface ToolDispatchContext<SessionT = unknown> {
   sessionId: string;
   session: SessionT;
   emit: (event: AgentEvent) => void;
+  getRlClient: () => unknown;
 }
 
 export interface ToolDispatchResult {

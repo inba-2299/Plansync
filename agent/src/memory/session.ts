@@ -191,7 +191,13 @@ function parseMeta(raw: Record<string, unknown>): SessionMeta {
     turnCount: Number(raw.turnCount ?? 0),
     rlApiKeyEnc: raw.rlApiKeyEnc ? String(raw.rlApiKeyEnc) : undefined,
     rlWorkspaceId:
-      raw.rlWorkspaceId !== undefined ? Number(raw.rlWorkspaceId) : undefined,
+      raw.rlWorkspaceId !== undefined && raw.rlWorkspaceId !== null
+        ? Number(raw.rlWorkspaceId)
+        : undefined,
+    rlProjectId:
+      raw.rlProjectId !== undefined && raw.rlProjectId !== null
+        ? Number(raw.rlProjectId)
+        : undefined,
   };
 }
 
@@ -205,6 +211,7 @@ function flattenMeta(meta: SessionMeta): Record<string, string | number> {
   };
   if (meta.rlApiKeyEnc) out.rlApiKeyEnc = meta.rlApiKeyEnc;
   if (meta.rlWorkspaceId !== undefined) out.rlWorkspaceId = meta.rlWorkspaceId;
+  if (meta.rlProjectId !== undefined) out.rlProjectId = meta.rlProjectId;
   return out;
 }
 

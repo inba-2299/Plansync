@@ -1,9 +1,12 @@
 import type { ToolDispatchContext, ToolDispatchResult } from '../types';
 import type { Session } from '../memory/session';
 
+// Group A: Input & context
 import { parseCsvTool } from './parse-csv';
 import { getRocketlaneContextTool } from './get-rocketlane-context';
 import { queryArtifactTool } from './query-artifact';
+
+// Group B: Planning & metacognition
 import { validatePlanTool } from './validate-plan';
 import {
   createExecutionPlanTool,
@@ -11,28 +14,35 @@ import {
 } from './create-execution-plan';
 import { updateJourneyStateTool } from './update-journey-state';
 import { reflectOnFailureTool } from './reflect-on-failure';
+
+// Group C: Memory
 import { rememberTool } from './remember';
 import { recallTool } from './recall';
 
+// Group D: HITL (blocking)
+import { requestUserApprovalTool } from './request-user-approval';
+
+// Group E: Creation
+import { createRocketlaneProjectTool } from './create-rocketlane-project';
+import { createPhaseTool } from './create-phase';
+import { createTaskTool, type CreateTaskInput } from './create-task';
+import { createTasksBulkTool } from './create-tasks-bulk';
+import { addDependencyTool } from './add-dependency';
+
+// Group F: Verification
+import { getTaskTool } from './get-task';
+import { retryTaskTool } from './retry-task';
+
+// Group G: Display
+import { displayPlanForReviewTool } from './display-plan-for-review';
+import { displayProgressUpdateTool } from './display-progress-update';
+import { displayCompletionSummaryTool } from './display-completion-summary';
+
 /**
- * Tool registry — the one place that glues Anthropic tool schemas
- * to their local TypeScript implementations.
+ * Tool registry — glues Anthropic tool schemas to local handlers.
  *
- * CURRENT STATE (Hour 2.5-4 checkpoint):
- *   - Group A (input): parse_csv, get_rocketlane_context, query_artifact
- *   - Group B (planning): validate_plan, create_execution_plan,
- *     update_journey_state, reflect_on_failure
- *   - Group C (memory): remember, recall
- *
- * COMING in Hour 4-5.5:
- *   - Group D (HITL — blocking): request_user_approval
- *   - Group E (creation): create_rocketlane_project, create_phase,
- *     create_task, create_tasks_bulk, add_dependency
- *   - Group F (verification): get_task, retry_task
- *   - Group G (display): display_plan_for_review, display_progress_update,
- *     display_completion_summary
- *   - Group H (server tool from Anthropic): web_search (added directly to
- *     the messages.stream tools array, not dispatched locally)
+ * 20 custom tools organized into 7 groups + 1 Anthropic server tool (web_search)
+ * added directly to the tools array in loop.ts.
  */
 
 // ---------- dispatcher ----------
@@ -43,10 +53,13 @@ type ToolHandler = (
 ) => Promise<ToolDispatchResult>;
 
 const HANDLERS: Record<string, ToolHandler> = {
+  // Group A
   parse_csv: (input, ctx) => parseCsvTool(input as { fileId: string }, ctx),
   get_rocketlane_context: (input, ctx) => getRocketlaneContextTool(input, ctx),
   query_artifact: (input, ctx) =>
     queryArtifactTool(input as { artifactId: string; path?: string }, ctx),
+
+  // Group B
   validate_plan: (input, ctx) =>
     validatePlanTool(
       input as { plan: import('../types').Plan; sourceRowCount?: number },
@@ -66,8 +79,79 @@ const HANDLERS: Record<string, ToolHandler> = {
       input as { observation: string; hypothesis: string; next_action: string },
       ctx
     ),
+
+  // Group C
   remember: (input, ctx) => rememberTool(input as { key: string; value: unknown }, ctx),
   recall: (input, ctx) => recallTool(input as { key?: string }, ctx),
+
+  // Group D (blocking)
+  request_user_approval: (input, ctx) =>
+    requestUserApprovalTool(
+      input as {
+        question: string;
+        options: Array<{ label: string; value: string; description?: string }>;
+        context?: string;
+      },
+      ctx
+    ),
+
+  // Group E (creation)
+  create_rocketlane_project: (input, ctx) =>
+    createRocketlaneProjectTool(
+      input as {
+        projectName: string;
+        ownerEmail: string;
+        customerName: string;
+        startDate?: string;
+        dueDate?: string;
+        description?: string;
+      },
+      ctx
+    ),
+  create_phase: (input, ctx) =>
+    createPhaseTool(
+      input as {
+        tempId: string;
+        phaseName: string;
+        startDate: string;
+        dueDate: string;
+        description?: string;
+      },
+      ctx
+    ),
+  create_task: (input, ctx) => createTaskTool(input as unknown as CreateTaskInput, ctx),
+  create_tasks_bulk: (input, ctx) =>
+    createTasksBulkTool(
+      input as {
+        phaseTempId: string;
+        tasks: Array<unknown>;
+      } as unknown as import('./create-tasks-bulk').CreateTasksBulkInput,
+      ctx
+    ),
+  add_dependency: (input, ctx) =>
+    addDependencyTool(
+      input as { fromTempId: string; toTempId: string; type?: string; lagDays?: number } as unknown as import('./add-dependency').AddDependencyInput,
+      ctx
+    ),
+
+  // Group F (verification)
+  get_task: (input, ctx) =>
+    getTaskTool(input as { rlId?: number; tempId?: string }, ctx),
+  retry_task: (input, ctx) => retryTaskTool(input as unknown as CreateTaskInput, ctx),
+
+  // Group G (display)
+  display_plan_for_review: (input, ctx) =>
+    displayPlanForReviewTool(input as { plan: import('../types').Plan }, ctx),
+  display_progress_update: (input, ctx) =>
+    displayProgressUpdateTool(
+      input as { completed: number; total: number; currentPhase?: string; detail?: string },
+      ctx
+    ),
+  display_completion_summary: (input, ctx) =>
+    displayCompletionSummaryTool(
+      input as unknown as import('./display-completion-summary').DisplayCompletionSummaryInput,
+      ctx
+    ),
 };
 
 export async function dispatch(
@@ -81,7 +165,6 @@ export async function dispatch(
       summary: `ERROR: unknown tool "${name}". Available tools: ${Object.keys(HANDLERS).join(', ')}`,
     };
   }
-
   try {
     const safeInput = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
     return await handler(safeInput, ctx);
@@ -97,6 +180,8 @@ export function isKnownTool(name: string): boolean {
   return name in HANDLERS;
 }
 
+export type KnownToolName = keyof typeof HANDLERS;
+
 // ---------- Anthropic tool schemas ----------
 
 export const TOOL_SCHEMAS = [
@@ -109,11 +194,7 @@ export const TOOL_SCHEMAS = [
     input_schema: {
       type: 'object',
       properties: {
-        fileId: {
-          type: 'string',
-          description:
-            'The artifactId returned by the upload endpoint. Looks like "art_abc123...".',
-        },
+        fileId: { type: 'string', description: 'Artifact id returned by upload.' },
       },
       required: ['fileId'],
     },
@@ -122,28 +203,22 @@ export const TOOL_SCHEMAS = [
   {
     name: 'get_rocketlane_context',
     description:
-      "Fetch the user's Rocketlane workspace context: existing projects (for duplicate detection and owner defaults), companies (for customer selection), and team members (for owner email). Requires the user's Rocketlane API key to have been provided earlier. Results are stored in an artifact; use query_artifact for specific slices.",
-    input_schema: {
-      type: 'object',
-      properties: {},
-    },
+      "Fetch the user's Rocketlane workspace context: existing projects (duplicate detection + owner defaults), companies (customer selection), team members (owner email selection). Requires the user's Rocketlane API key to have been stored earlier. Stored as an artifact; use query_artifact for specific slices.",
+    input_schema: { type: 'object', properties: {} },
   },
 
   {
     name: 'query_artifact',
     description:
-      'Read a slice of a stored artifact blob without loading the whole thing into context. Supports paths like "rows[0:10]", "teamMembers[2].email", "projects.length". Use this instead of asking for the whole artifact — it keeps token usage down.',
+      'Read a slice of a stored artifact blob without loading the whole thing. Path syntax: "rows[0:10]", "teamMembers[2].email", "projects.length". Keeps token usage bounded.',
     input_schema: {
       type: 'object',
       properties: {
-        artifactId: {
-          type: 'string',
-          description: 'The artifact id (looks like "art_abc123").',
-        },
+        artifactId: { type: 'string' },
         path: {
           type: 'string',
           description:
-            'Path into the artifact. Empty string or omitted = whole content. Examples: "rows", "rows[0]", "rows[0:10]", "projects[2].projectName", "errors.length".',
+            'Path into the artifact. Empty = whole content. Examples: "rows", "rows[0:10]", "projects[2].projectName".',
         },
       },
       required: ['artifactId'],
@@ -155,13 +230,12 @@ export const TOOL_SCHEMAS = [
   {
     name: 'validate_plan',
     description:
-      'Run 11 programmatic checks on a structured project plan. Returns errors (hard failures that must be fixed) and warnings (soft issues to acknowledge). Call this before showing the plan to the user, and again after any user-requested edits. If errors are returned, regenerate the plan to fix them and re-validate.',
+      'Run 11 programmatic checks on a structured project plan. Returns errors (must fix) and warnings (acknowledge). Call before showing the plan to the user and after any user-requested edits. Regenerate and re-validate on errors.',
     input_schema: {
       type: 'object',
       properties: {
         plan: {
           type: 'object',
-          description: 'The structured plan to validate',
           properties: {
             projectName: { type: 'string' },
             items: {
@@ -171,7 +245,10 @@ export const TOOL_SCHEMAS = [
                 properties: {
                   id: { type: 'string' },
                   name: { type: 'string' },
-                  type: { type: 'string', enum: ['phase', 'task', 'subtask', 'milestone'] },
+                  type: {
+                    type: 'string',
+                    enum: ['phase', 'task', 'subtask', 'milestone'],
+                  },
                   parentId: { type: ['string', 'null'] },
                   depth: { type: 'integer' },
                   startDate: { type: ['string', 'null'] },
@@ -187,15 +264,10 @@ export const TOOL_SCHEMAS = [
                 required: ['id', 'name', 'type', 'parentId', 'depth'],
               },
             },
-            sourceRowCount: { type: 'integer' },
           },
           required: ['projectName', 'items'],
         },
-        sourceRowCount: {
-          type: 'integer',
-          description:
-            'Optional: the number of rows in the source CSV. If provided, the validator warns about large mismatches.',
-        },
+        sourceRowCount: { type: 'integer' },
       },
       required: ['plan'],
     },
@@ -204,34 +276,23 @@ export const TOOL_SCHEMAS = [
   {
     name: 'create_execution_plan',
     description:
-      "Write your own TODO list as a visible card so the user can see what's coming next. Call at the start of a non-trivial goal (especially after file upload). If you change approach mid-run, call again with the updated plan — the user sees the update in real time.",
+      "Write your own TODO list as a visible card so the user can see what's coming next. Call at the start of a non-trivial goal. If you change approach mid-run, call again with the updated plan.",
     input_schema: {
       type: 'object',
       properties: {
-        goal: {
-          type: 'string',
-          description: 'One-sentence description of what you are trying to accomplish',
-        },
+        goal: { type: 'string' },
         steps: {
           type: 'array',
-          description: 'Ordered list of steps you plan to take',
           items: {
             type: 'object',
             properties: {
-              id: { type: 'string', description: 'Short id like "parse" or "validate"' },
-              label: {
-                type: 'string',
-                description: 'Human-readable label shown in the card',
-              },
+              id: { type: 'string' },
+              label: { type: 'string' },
               status: {
                 type: 'string',
                 enum: ['pending', 'in_progress', 'done', 'error'],
-                description: 'Optional initial status (default: pending, first step = in_progress)',
               },
-              notes: {
-                type: 'string',
-                description: 'Optional short notes shown under the step',
-              },
+              notes: { type: 'string' },
             },
             required: ['id', 'label'],
           },
@@ -244,13 +305,12 @@ export const TOOL_SCHEMAS = [
   {
     name: 'update_journey_state',
     description:
-      'Update the sticky journey stepper at the top of the chat UI. Call whenever your overall phase of work changes so the user always knows "where are we?". Standard 6-step journey: Connect → Upload → Analyze → Review & Approve → Execute → Complete. Initialize this at the START of every session with all 6 steps.',
+      'Update the sticky journey stepper at the top of the chat UI. Always send the FULL steps list, not a delta. Initialize at session start with 6 standard steps: Connect → Upload → Analyze → Review & Approve → Execute → Complete.',
     input_schema: {
       type: 'object',
       properties: {
         steps: {
           type: 'array',
-          description: 'Full stepper state (replaces previous state — always send all steps)',
           items: {
             type: 'object',
             properties: {
@@ -272,22 +332,13 @@ export const TOOL_SCHEMAS = [
   {
     name: 'reflect_on_failure',
     description:
-      'Call this AFTER any tool failure or validation error, BEFORE retrying. State your observation (what happened), hypothesis (why it probably happened), and next_action (what you will try). Renders as a prominent purple card so the user sees you thinking rather than flailing. Two to four sentences per field.',
+      'Call AFTER any tool failure or validation error, BEFORE retrying. State observation, hypothesis, next_action. Renders as a prominent purple card. Two to four sentences per field.',
     input_schema: {
       type: 'object',
       properties: {
-        observation: {
-          type: 'string',
-          description: 'What went wrong — the error, failure mode, or unexpected result',
-        },
-        hypothesis: {
-          type: 'string',
-          description: 'Your reasoning about why it happened',
-        },
-        next_action: {
-          type: 'string',
-          description: 'Concrete next step you will take',
-        },
+        observation: { type: 'string' },
+        hypothesis: { type: 'string' },
+        next_action: { type: 'string' },
       },
       required: ['observation', 'hypothesis', 'next_action'],
     },
@@ -298,18 +349,12 @@ export const TOOL_SCHEMAS = [
   {
     name: 'remember',
     description:
-      'Store a named fact in working memory across turns WITHOUT cluttering conversation history. Use for: user preferences ("user_date_format": "DD/MM"), resolved ambiguities, decisions, runtime API corrections. Complement to recall.',
+      'Store a named fact in working memory across turns without cluttering conversation history. Use for user preferences, resolved ambiguities, decisions, runtime API corrections.',
     input_schema: {
       type: 'object',
       properties: {
-        key: {
-          type: 'string',
-          description:
-            'Short identifier for the memory. Use namespaced keys for categories, e.g. "user_date_format", "rl_api_fix:createPhase".',
-        },
-        value: {
-          description: 'Any JSON-serializable value (string, number, boolean, object, array).',
-        },
+        key: { type: 'string' },
+        value: { description: 'Any JSON-serializable value' },
       },
       required: ['key', 'value'],
     },
@@ -317,18 +362,249 @@ export const TOOL_SCHEMAS = [
 
   {
     name: 'recall',
+    description: 'Read a remembered fact. Omit key to list all remembered keys.',
+    input_schema: {
+      type: 'object',
+      properties: { key: { type: 'string' } },
+    },
+  },
+
+  // ------- Group D: HITL (BLOCKING) -------
+
+  {
+    name: 'request_user_approval',
     description:
-      'Read a remembered fact back. If called with no key (or empty string), returns a list of all remembered keys so you know what is in memory.',
+      'THE ONLY BLOCKING TOOL. Pauses the agent loop and shows the user a prompt with clickable options. Use for: API key entry, file upload prompts, plan approval, ambiguous date resolution, deep-nesting decisions, duplicate handling, retry/skip/abort choices. The agent resumes when the user clicks an option. Max 6 options.',
     input_schema: {
       type: 'object',
       properties: {
-        key: {
-          type: 'string',
-          description: 'The memory key to read. Omit to list all keys.',
+        question: { type: 'string', description: 'The question to show the user' },
+        options: {
+          type: 'array',
+          maxItems: 6,
+          items: {
+            type: 'object',
+            properties: {
+              label: { type: 'string', description: 'Button label shown to user' },
+              value: {
+                type: 'string',
+                description: 'Machine value passed back in the tool_result',
+              },
+              description: { type: 'string', description: 'Optional sub-text shown under label' },
+            },
+            required: ['label', 'value'],
+          },
         },
+        context: { type: 'string', description: 'Optional extra context shown to the user' },
+      },
+      required: ['question', 'options'],
+    },
+  },
+
+  // ------- Group E: Creation -------
+
+  {
+    name: 'create_rocketlane_project',
+    description:
+      'Create the Rocketlane project shell. First call of pass 1. Stores projectId for subsequent create_phase calls. ownerEmail must be a TEAM_MEMBER email (get from get_rocketlane_context). autoCreateCompany: true creates the customer if missing.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        projectName: { type: 'string' },
+        ownerEmail: { type: 'string' },
+        customerName: { type: 'string' },
+        startDate: { type: 'string', description: 'YYYY-MM-DD' },
+        dueDate: { type: 'string', description: 'YYYY-MM-DD' },
+        description: { type: 'string' },
+      },
+      required: ['projectName', 'ownerEmail', 'customerName'],
+    },
+  },
+
+  {
+    name: 'create_phase',
+    description:
+      'Create one phase. Requires the project to already exist in this session (via create_rocketlane_project). Both dates are REQUIRED by Rocketlane. tempId is the agent-assigned plan item id used to reference this phase in subsequent create_task calls.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        tempId: { type: 'string' },
+        phaseName: { type: 'string' },
+        startDate: { type: 'string' },
+        dueDate: { type: 'string' },
+        description: { type: 'string' },
+      },
+      required: ['tempId', 'phaseName', 'startDate', 'dueDate'],
+    },
+  },
+
+  {
+    name: 'create_task',
+    description:
+      'Create ONE task, subtask, or milestone. For a regular task: omit parentTempId. For a subtask: set parentTempId to parent task tempId. For a milestone: set type=MILESTONE. Prefer create_tasks_bulk when creating many tasks in one phase.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        tempId: { type: 'string' },
+        phaseTempId: { type: 'string' },
+        parentTempId: { type: 'string' },
+        taskName: { type: 'string' },
+        type: { type: 'string', enum: ['TASK', 'MILESTONE'] },
+        startDate: { type: 'string' },
+        dueDate: { type: 'string' },
+        effortInMinutes: { type: 'integer' },
+        progress: { type: 'integer', minimum: 0, maximum: 100 },
+        status: { type: 'integer', enum: [1, 2, 3] },
+        description: { type: 'string' },
+      },
+      required: ['tempId', 'phaseTempId', 'taskName'],
+    },
+  },
+
+  {
+    name: 'create_tasks_bulk',
+    description:
+      'Hot path for execution. Creates all tasks in one phase in one tool call, with progress events every 3 tasks. Tasks must be ordered: parents before children. Continues past individual failures and returns a {created, failed} summary — retry failures with retry_task.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        phaseTempId: { type: 'string' },
+        tasks: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              tempId: { type: 'string' },
+              parentTempId: { type: 'string' },
+              taskName: { type: 'string' },
+              type: { type: 'string', enum: ['TASK', 'MILESTONE'] },
+              startDate: { type: 'string' },
+              dueDate: { type: 'string' },
+              effortInMinutes: { type: 'integer' },
+              progress: { type: 'integer' },
+              status: { type: 'integer', enum: [1, 2, 3] },
+              description: { type: 'string' },
+            },
+            required: ['tempId', 'taskName'],
+          },
+        },
+      },
+      required: ['phaseTempId', 'tasks'],
+    },
+  },
+
+  {
+    name: 'add_dependency',
+    description:
+      'PASS 2 tool. fromTempId depends on toTempId (fromTempId cannot start until toTempId finishes). Both tempIds must exist in session idmap from pass 1. Rocketlane only supports Finish-to-Start at the API level; type/lagDays parameters are accepted but only FS with no lag is actually set.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        fromTempId: { type: 'string' },
+        toTempId: { type: 'string' },
+        type: { type: 'string', enum: ['FS', 'SS', 'FF', 'SF'] },
+        lagDays: { type: 'integer' },
+      },
+      required: ['fromTempId', 'toTempId'],
+    },
+  },
+
+  // ------- Group F: Verification -------
+
+  {
+    name: 'get_task',
+    description:
+      'Read a task directly from Rocketlane for verification. Accepts either rlId (number — real Rocketlane ID) or tempId (string — resolved via session idmap). Use after create_tasks_bulk to spot-check a sample.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        rlId: { type: 'integer' },
+        tempId: { type: 'string' },
       },
     },
   },
-] as const;
 
-export type KnownToolName = keyof typeof HANDLERS;
+  {
+    name: 'retry_task',
+    description:
+      'Retry a failed task creation with corrected arguments. Same input schema as create_task. Skips if the tempId was successfully created on a previous attempt (idempotent).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        tempId: { type: 'string' },
+        phaseTempId: { type: 'string' },
+        parentTempId: { type: 'string' },
+        taskName: { type: 'string' },
+        type: { type: 'string', enum: ['TASK', 'MILESTONE'] },
+        startDate: { type: 'string' },
+        dueDate: { type: 'string' },
+        effortInMinutes: { type: 'integer' },
+        progress: { type: 'integer' },
+        status: { type: 'integer', enum: [1, 2, 3] },
+        description: { type: 'string' },
+      },
+      required: ['tempId', 'phaseTempId', 'taskName'],
+    },
+  },
+
+  // ------- Group G: Display -------
+
+  {
+    name: 'display_plan_for_review',
+    description:
+      'Render the structured plan as a PlanReviewTree card so the user can review it before approving. Typically called immediately before request_user_approval. Also stores the plan as an artifact for later reference.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        plan: {
+          type: 'object',
+          description: 'Same shape as validate_plan input',
+        },
+      },
+      required: ['plan'],
+    },
+  },
+
+  {
+    name: 'display_progress_update',
+    description:
+      'Update the ProgressFeed card during long-running execution. Called periodically (e.g. during create_tasks_bulk). completed + total drive the progress bar; currentPhase + detail give contextual text.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        completed: { type: 'integer' },
+        total: { type: 'integer' },
+        currentPhase: { type: 'string' },
+        detail: { type: 'string' },
+      },
+      required: ['completed', 'total'],
+    },
+  },
+
+  {
+    name: 'display_completion_summary',
+    description:
+      'Render the final CompletionCard at the end of a successful run. Shows stats + link to the created project in Rocketlane. Call this exactly once at the end.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        stats: {
+          type: 'object',
+          properties: {
+            phasesCreated: { type: 'integer' },
+            tasksCreated: { type: 'integer' },
+            subtasksCreated: { type: 'integer' },
+            milestonesCreated: { type: 'integer' },
+            dependenciesCreated: { type: 'integer' },
+            totalCreated: { type: 'integer' },
+            failed: { type: 'integer' },
+            durationSeconds: { type: 'number' },
+          },
+        },
+        projectUrl: { type: 'string' },
+        projectName: { type: 'string' },
+      },
+      required: ['stats'],
+    },
+  },
+] as const;

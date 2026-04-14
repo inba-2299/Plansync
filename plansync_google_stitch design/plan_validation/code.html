@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Architect AI | Plan Validation &amp; Review</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<!-- Icons -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-container": "#3c59fd",
+                        "on-tertiary-fixed-variant": "#5a00c6",
+                        "surface": "#faf8ff",
+                        "inverse-primary": "#bbc3ff",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary-fixed": "#eaddff",
+                        "surface-container-highest": "#dae2fd",
+                        "on-secondary": "#ffffff",
+                        "on-secondary-fixed-variant": "#2f2ebe",
+                        "surface-variant": "#dae2fd",
+                        "on-secondary-container": "#fffbff",
+                        "secondary": "#4648d4",
+                        "secondary-fixed-dim": "#c0c1ff",
+                        "surface-container-low": "#f2f3ff",
+                        "inverse-surface": "#283044",
+                        "background": "#faf8ff",
+                        "primary-fixed-dim": "#bbc3ff",
+                        "error": "#ba1a1a",
+                        "on-tertiary": "#ffffff",
+                        "on-surface": "#131b2e",
+                        "on-background": "#131b2e",
+                        "on-tertiary-fixed": "#25005a",
+                        "error-container": "#ffdad6",
+                        "outline-variant": "#c3c6d7",
+                        "surface-bright": "#faf8ff",
+                        "on-primary": "#ffffff",
+                        "on-surface-variant": "#434655",
+                        "inverse-on-surface": "#eef0ff",
+                        "tertiary-fixed-dim": "#d2bbff",
+                        "tertiary-container": "#8343f4",
+                        "surface-tint": "#2848ee",
+                        "on-primary-fixed-variant": "#002ccd",
+                        "primary-fixed": "#dee0ff",
+                        "secondary-fixed": "#e1e0ff",
+                        "surface-container-high": "#e2e7ff",
+                        "on-error": "#ffffff",
+                        "surface-dim": "#d2d9f4",
+                        "outline": "#737686",
+                        "on-secondary-fixed": "#07006c",
+                        "on-primary-container": "#f0efff",
+                        "on-primary-fixed": "#000f5d",
+                        "tertiary": "#6a1edb",
+                        "primary": "#173ce5",
+                        "on-error-container": "#93000a",
+                        "surface-container": "#eaedff",
+                        "secondary-container": "#6063ee",
+                        "on-tertiary-container": "#f7edff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3 { font-family: 'Manrope', sans-serif; }
+    </style>
+</head>
+<body class="bg-surface text-on-surface selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 right-0 z-50 bg-[#faf8ff] flex justify-between items-center w-full px-6 py-3">
+<div class="flex items-center gap-4">
+<span class="text-xl font-extrabold text-[#173ce5]">Architect AI</span>
+</div>
+<div class="flex items-center gap-6">
+<nav class="hidden md:flex items-center gap-8">
+<a class="text-[#173ce5] border-b-2 border-[#173ce5] font-['Manrope'] font-bold text-lg tracking-tight" href="#">Active Plans</a>
+<a class="text-slate-500 hover:bg-[#f2f3ff] transition-colors font-['Manrope'] font-bold text-lg tracking-tight" href="#">Dashboard</a>
+<a class="text-slate-500 hover:bg-[#f2f3ff] transition-colors font-['Manrope'] font-bold text-lg tracking-tight" href="#">Resource Library</a>
+</nav>
+<div class="flex items-center gap-3">
+<button class="p-2 rounded-full hover:bg-[#f2f3ff] text-slate-500 transition-colors"><span class="material-symbols-outlined" data-icon="account_tree">account_tree</span></button>
+<button class="p-2 rounded-full hover:bg-[#f2f3ff] text-slate-500 transition-colors"><span class="material-symbols-outlined" data-icon="notifications">notifications</span></button>
+<button class="p-2 rounded-full hover:bg-[#f2f3ff] text-slate-500 transition-colors"><span class="material-symbols-outlined" data-icon="settings">settings</span></button>
+<img alt="User avatar" class="w-8 h-8 rounded-full object-cover ml-2" data-alt="Close-up portrait of a professional woman with a confident expression in a brightly lit modern office environment" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDgaUbOl4iLFM3GBnUA6KMs_3FvRhZZAMONR1S6GloXX_5p9pWvlCm_1CXVCPIlIbbCjmh3zBmZb0CTDhjcdJBlR-h45jmr5uWy50t3mGLRpaMXjg6rmCdn13iff4sw8T1YW0Gnh0rIyR6JWUuC5d6G8VJqTOugN7skA2XpQovmBbuq2dmCIkPm641f1enVJ1peohCAE4rmC0Vr2A6fhq4IPEz5UH3NeLJ6G8TAxJS7iBrvev_nbusuZn5z8rp4-kwtypDZAG1PF_c"/>
+</div>
+</div>
+</header>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 h-screen flex flex-col p-4 w-64 bg-[#f2f3ff] pt-20">
+<div class="flex items-center gap-3 mb-8 px-2">
+<div class="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white">
+<span class="material-symbols-outlined" data-icon="rocket_launch">rocket_launch</span>
+</div>
+<div>
+<p class="font-['Manrope'] font-bold text-[#173ce5]">Project Curator</p>
+<p class="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Connected to Rocketlane</p>
+</div>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-white/50 rounded-lg transition-all font-medium text-sm" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+                Dashboard
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 bg-white text-[#173ce5] font-bold rounded-lg shadow-sm transition-all text-sm" href="#">
+<span class="material-symbols-outlined" data-icon="tactic">tactic</span>
+                Active Plans
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-white/50 rounded-lg transition-all font-medium text-sm" href="#">
+<span class="material-symbols-outlined" data-icon="folder_open">folder_open</span>
+                Resource Library
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-white/50 rounded-lg transition-all font-medium text-sm" href="#">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+                Agent History
+            </a>
+</nav>
+<div class="mt-auto space-y-1 pt-4 border-t border-outline-variant/20">
+<button class="w-full bg-primary text-white py-3 rounded-xl font-bold text-sm mb-4 shadow-lg shadow-primary/20 hover:scale-[0.98] transition-transform">
+                New Strategy
+            </button>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-white/50 rounded-lg transition-all text-sm" href="#">
+<span class="material-symbols-outlined" data-icon="help">help</span>
+                Support
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-white/50 rounded-lg transition-all text-sm" href="#">
+<span class="material-symbols-outlined" data-icon="archive">archive</span>
+                Archive
+            </a>
+</div>
+</aside>
+<!-- Main Canvas -->
+<main class="ml-64 pt-20 p-8 min-h-screen">
+<div class="max-w-6xl mx-auto">
+<!-- Header Section -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+<div class="space-y-2">
+<nav class="flex items-center gap-2 text-on-surface-variant text-sm mb-2">
+<span>Projects</span>
+<span class="material-symbols-outlined text-xs" data-icon="chevron_right">chevron_right</span>
+<span>Global Expansion 2024</span>
+<span class="material-symbols-outlined text-xs" data-icon="chevron_right">chevron_right</span>
+<span class="text-primary font-semibold">Review Detected Plan</span>
+</nav>
+<h1 class="text-4xl font-extrabold tracking-tight text-on-surface">Plan Validation &amp; Review</h1>
+<p class="text-on-surface-variant max-w-2xl body-md">I've parsed the "Q3 Strategic Roadmap" document. Below is the structured hierarchy of tasks, milestones, and dependencies I detected. Please verify before we push to Rocketlane.</p>
+</div>
+<div class="flex gap-3">
+<div class="bg-surface-container-high px-4 py-2 rounded-xl flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-sm" data-icon="account_tree">account_tree</span>
+<span class="text-xs font-bold text-on-surface-variant">NESTING DEPTH: 3</span>
+</div>
+<div class="bg-secondary/10 px-4 py-2 rounded-xl flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary text-sm" data-icon="link">link</span>
+<span class="text-xs font-bold text-secondary">12 DEPENDENCIES</span>
+</div>
+</div>
+</div>
+<!-- Content Grid: Bento Style -->
+<div class="grid grid-cols-12 gap-6">
+<!-- Main Plan Hierarchy (8 Columns) -->
+<div class="col-span-12 lg:col-span-8 space-y-4">
+<!-- Phase 1 -->
+<div class="bg-surface-container-low rounded-3xl p-6">
+<div class="flex items-center justify-between mb-6">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-2xl bg-primary-container/20 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined" data-icon="architecture">architecture</span>
+</div>
+<div>
+<h3 class="text-xl font-bold text-on-surface">Phase 01: Foundation &amp; Analysis</h3>
+<p class="text-sm text-on-surface-variant">July 01 - July 20, 2024</p>
+</div>
+</div>
+<span class="bg-primary/10 text-primary text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-tighter">Phase</span>
+</div>
+<div class="space-y-1">
+<!-- Task Row -->
+<div class="group flex items-center justify-between p-4 bg-white rounded-2xl hover:bg-surface-container-high transition-colors">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-outline" data-icon="drag_indicator">drag_indicator</span>
+<div>
+<p class="font-semibold text-on-surface">Market Readiness Assessment</p>
+<div class="flex gap-3 items-center mt-1">
+<span class="text-[11px] font-medium text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined text-xs" data-icon="person">person</span> Sarah Jenkins</span>
+<span class="text-[11px] font-medium text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined text-xs" data-icon="schedule">schedule</span> 5 days</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<span class="text-xs font-bold text-secondary bg-secondary-fixed px-2 py-0.5 rounded">DETECTED DEP.</span>
+<button class="text-outline hover:text-primary transition-colors"><span class="material-symbols-outlined" data-icon="edit_note">edit_note</span></button>
+</div>
+</div>
+<!-- Nested Task Row -->
+<div class="group flex items-center justify-between p-4 bg-white/60 ml-8 rounded-2xl border-l-2 border-primary/20 hover:bg-surface-container-high transition-colors">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-outline" data-icon="subdirectory_arrow_right">subdirectory_arrow_right</span>
+<div>
+<p class="font-medium text-on-surface">Competitor Gap Analysis</p>
+<p class="text-[11px] text-on-surface-variant mt-0.5">Sub-task of Assessment</p>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<span class="text-[11px] font-medium text-on-surface-variant">3 days</span>
+<button class="text-outline hover:text-primary transition-colors"><span class="material-symbols-outlined" data-icon="edit_note">edit_note</span></button>
+</div>
+</div>
+<!-- Milestone Row -->
+<div class="group flex items-center justify-between p-4 bg-white rounded-2xl border-2 border-dashed border-primary/10 mt-2">
+<div class="flex items-center gap-4">
+<div class="w-8 h-8 rounded-lg bg-tertiary/10 flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined text-sm" data-icon="flag">flag</span>
+</div>
+<div>
+<p class="font-bold text-on-surface">MILESTONE: Foundation Approval</p>
+<p class="text-[10px] text-tertiary font-bold uppercase">Critical Path</p>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<span class="text-xs font-bold text-on-surface-variant">July 20</span>
+<button class="text-outline hover:text-primary transition-colors"><span class="material-symbols-outlined" data-icon="settings_input_component">settings_input_component</span></button>
+</div>
+</div>
+</div>
+</div>
+<!-- Phase 2 -->
+<div class="bg-surface-container-low rounded-3xl p-6 opacity-80">
+<div class="flex items-center justify-between mb-6">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-2xl bg-secondary-container/20 flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined" data-icon="layers">layers</span>
+</div>
+<div>
+<h3 class="text-xl font-bold text-on-surface">Phase 02: Resource Allocation</h3>
+<p class="text-sm text-on-surface-variant">July 21 - Aug 15, 2024</p>
+</div>
+</div>
+<span class="bg-primary/10 text-primary text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-tighter">Phase</span>
+</div>
+<div class="flex items-center justify-center py-8 border-2 border-dashed border-outline-variant rounded-2xl">
+<button class="text-primary font-bold flex items-center gap-2 hover:underline">
+<span class="material-symbols-outlined" data-icon="expand_more">expand_more</span>
+                                View 14 Hidden Tasks
+                            </button>
+</div>
+</div>
+</div>
+<!-- Side Panel: AI Agent & Meta (4 Columns) -->
+<div class="col-span-12 lg:col-span-4 space-y-6">
+<!-- Agent Interaction -->
+<div class="bg-surface-container-highest rounded-3xl p-6 relative overflow-hidden">
+<div class="absolute top-0 right-0 p-4 opacity-10">
+<span class="material-symbols-outlined text-8xl" data-icon="smart_toy">smart_toy</span>
+</div>
+<div class="relative z-10">
+<div class="flex items-center gap-3 mb-4">
+<div class="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-white ring-4 ring-white shadow-lg">
+<span class="material-symbols-outlined text-sm" data-icon="auto_awesome">auto_awesome</span>
+</div>
+<div>
+<h4 class="font-bold text-on-surface">Project Curator</h4>
+<p class="text-[10px] text-primary font-bold uppercase">AI Validation Active</p>
+</div>
+</div>
+<div class="bg-white p-4 rounded-2xl rounded-bl-sm mb-4 shadow-sm text-sm leading-relaxed text-on-surface-variant">
+                                I've flagged <strong class="text-primary">3 potential scheduling conflicts</strong> in Phase 2. Should I attempt to auto-resolve these based on team bandwidth, or do you want to modify the logic first?
+                            </div>
+<div class="space-y-3">
+<button class="w-full bg-primary text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-3 shadow-xl shadow-primary/30 hover:scale-[1.02] transition-all">
+<span class="material-symbols-outlined" data-icon="verified">verified</span>
+                                    Approve &amp; Execute
+                                </button>
+<div class="relative">
+<input class="w-full bg-white border-none rounded-2xl px-4 py-4 pr-12 text-sm focus:ring-2 focus:ring-primary shadow-sm" placeholder="Modify Plan via Chat..." type="text"/>
+<button class="absolute right-3 top-1/2 -translate-y-1/2 text-primary">
+<span class="material-symbols-outlined" data-icon="send">send</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Statistics Bento Card -->
+<div class="bg-white rounded-3xl p-6 shadow-sm border border-outline-variant/10">
+<h4 class="text-sm font-bold text-on-surface-variant uppercase tracking-widest mb-6">Plan Integrity</h4>
+<div class="space-y-6">
+<div>
+<div class="flex justify-between mb-2">
+<span class="text-xs font-bold text-on-surface">Confidence Score</span>
+<span class="text-xs font-bold text-primary">94%</span>
+</div>
+<div class="h-2 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-gradient-to-r from-primary to-secondary" style="width: 94%"></div>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div class="bg-surface-container-low p-4 rounded-2xl text-center">
+<p class="text-2xl font-extrabold text-on-surface">32</p>
+<p class="text-[10px] font-bold text-on-surface-variant uppercase">Total Tasks</p>
+</div>
+<div class="bg-surface-container-low p-4 rounded-2xl text-center">
+<p class="text-2xl font-extrabold text-on-surface">08</p>
+<p class="text-[10px] font-bold text-on-surface-variant uppercase">Resources</p>
+</div>
+</div>
+<ul class="space-y-3 pt-4 border-t border-outline-variant/20">
+<li class="flex items-center gap-3 text-xs font-medium text-on-surface-variant">
+<span class="material-symbols-outlined text-primary text-sm" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+                                    No orphan tasks found
+                                </li>
+<li class="flex items-center gap-3 text-xs font-medium text-on-surface-variant">
+<span class="material-symbols-outlined text-primary text-sm" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+                                    Critical path validated
+                                </li>
+<li class="flex items-center gap-3 text-xs font-medium text-on-surface-variant">
+<span class="material-symbols-outlined text-error text-sm" data-icon="warning" style="font-variation-settings: 'FILL' 1;">warning</span>
+                                    2 Over-allocated assignees
+                                </li>
+</ul>
+</div>
+</div>
+<!-- Integration Context -->
+<div class="bg-on-surface p-6 rounded-3xl text-white">
+<div class="flex items-center gap-3 mb-4">
+<span class="material-symbols-outlined text-secondary-fixed" data-icon="hub">hub</span>
+<span class="text-sm font-bold">Sync Destination</span>
+</div>
+<div class="flex items-center justify-between p-3 bg-white/10 rounded-xl">
+<div class="flex items-center gap-2">
+<div class="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-sm" data-icon="rocket_launch">rocket_launch</span>
+</div>
+<span class="text-xs font-bold">Rocketlane Workspace</span>
+</div>
+<span class="material-symbols-outlined text-xs" data-icon="sync">sync</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Navigation Pivot (Mobile only) -->
+<nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white shadow-2xl flex justify-around p-4 z-50 rounded-t-3xl">
+<button class="flex flex-col items-center gap-1 text-primary">
+<span class="material-symbols-outlined" data-icon="tactic" style="font-variation-settings: 'FILL' 1;">tactic</span>
+<span class="text-[10px] font-bold">Active Plans</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-400">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="text-[10px] font-bold">Dashboard</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-400">
+<span class="material-symbols-outlined" data-icon="folder_open">folder_open</span>
+<span class="text-[10px] font-bold">Library</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-400">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="text-[10px] font-bold">Settings</span>
+</button>
+</nav>
+</body></html>
