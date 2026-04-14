@@ -105,4 +105,104 @@ Inbaraj had written a 970-line PRD (`PRD_Projectplanagent.md`) describing a Next
 
 ---
 
-## Session 2+ — (to be filled in as sessions happen)
+## 2026-04-15 — Session 2: All-nighter backend build (Hour 1 → 5.5–7)
+
+### Context at start
+Session 1 left us with Railway + Vercel scaffolded, fake streaming agent running on Hour 0. Plan for Session 2 was Hour 1–2.5 (RL client) through Hour 4–5.5 (real loop + tools). We ended up also completing Hour 5.5–7 (first real end-to-end run) because the build stayed on-schedule.
+
+### Decision: verify Rocketlane API shapes BEFORE writing tools (Hour 1–2.5)
+**What changed:** Wrote `agent/scripts/test-rl.ts` as a 12-scenario live-API test *before* writing any tool implementation. Ran it against the real workspace, captured actual response shapes in `agent/rl-api-contract.json`, and fixed the client + system prompt API reference to match reality.
+
+**Why this was worth it:** Caught 4 real deviations from the PRD §9 docs that would have broken the agent at runtime:
+1. `?limit=N` → actually `?pageSize=N` (wrong pagination param triggers 500)
+2. `/users/me` → doesn't exist. Use `GET /users` and filter by `type: TEAM_MEMBER`
+3. Response envelope is `{data: [...], pagination: {...}}` (PRD didn't document this)
+4. User email field is `email` on `/users` but `emailId` on `project.owner` — inconsistent in RL's own API
+
+**Lesson:** Always de-risk the external API before writing 20 tools against its docs. 2 hours of upfront testing saved hours of confused debugging later.
+
+### Decision: artifact store over inlined tool results
+**What changed:** Tool results are stored in `session:{id}:artifacts` (Redis HASH) as `{id, kind, preview, content}`. The `tool_result` block sent back to Claude contains only a short summary + the artifactId. Claude calls `query_artifact(id, path)` to read slices on demand.
+
+**Why:** Without this, every turn's tool_result gets replayed in every subsequent `messages.create` call. A 62-row plan's parsed CSV (30KB) + validator report (10KB) + RL context (15KB) would explode the context window by turn 10. With the artifact store, per-turn input stays roughly constant.
+
+**Verified in the first end-to-end run:** agent called `parse_csv` → got summary + artifactId, then used the summary directly without needing to query_artifact. The pattern works naturally for small plans; query_artifact is there when the agent needs specific slices of larger data.
+
+### Decision: Lazy RocketlaneClient per turn, not per-tool
+**What changed:** `ToolDispatchContext` exposes a `getRlClient()` function. The first tool in a turn that needs Rocketlane calls it; subsequent tools in the same turn reuse the cached instance. Each new turn gets a fresh client.
+
+**Why:**
+- Decryption of the API key from `session.meta.rlApiKeyEnc` happens once per turn, not once per tool call
+- Retry/rate-limit state is shared across all tools in a turn (consistent backoff behavior)
+- Per-turn freshness avoids stale state accumulating in the client over long-running sessions
+
+**Rejected:** A single global client per session. Would have shared state across parallel requests (race conditions) and across different API keys (if the session meta changes mid-flow).
+
+### Decision: AES-256-GCM encryption for RL API keys at rest
+**What changed:** `agent/src/lib/crypto.ts` uses AES-256-GCM with a server-side `ENCRYPTION_KEY` env var (32 random bytes, base64-encoded). Format: `iv:tag:ciphertext` as one base64-joined string. User API keys are encrypted before being stored on `session.meta.rlApiKeyEnc`.
+
+**Why kept this over "don't store" alternative:** Inbaraj explicitly rejected simplifying to "never store the key, pass it in every request" — "this is a production agent, not an MVP." The encryption story is also a stronger narrative for the BRD ("AES-256-GCM encrypted at rest" > "transmitted in every request body").
+
+**Operational detail:** Local dev uses a different `ENCRYPTION_KEY` than production (Railway env). User generated both with `openssl rand -base64 32` in their own terminal — neither key ever touched the chat.
+
+### Decision: `/session/:id/apikey` endpoint is production, not just a test hack
+**What changed:** Added `POST /session/:id/apikey` endpoint to `agent/src/index.ts`. Accepts `{apiKey: string}`, encrypts it, stores it on `session.meta.rlApiKeyEnc`.
+
+**Why:** Originally I was going to have the agent call `request_user_approval` to ask for the key, then handle it via `uiAction`. But that requires the key to pass through the conversation history (as a `tool_result` payload), which is messy and log-risky. A dedicated endpoint keeps the key out of the history entirely — the frontend POSTs directly to the backend, gets an {ok: true}, then resumes the agent flow via `uiAction: {toolUseId, data: "approved"}` without the key ever touching the agent's message pipeline.
+
+**This is the production pattern too** — the frontend's ApiKeyCard (to be built Tomorrow AM) will POST the key here when the user submits.
+
+### Lesson: system prompt must explicitly state where credentials live
+**What happened:** First end-to-end test run hit a bug. The agent's flow was:
+```
+parse_csv → validate_plan → display_plan_for_review → [journey advance to Execute]
+→ recall("rocketlane_api_key") → "No memory key"
+→ request_user_approval → "Please provide your Rocketlane API key"
+```
+The agent INFERRED (from the memory rule in the system prompt) that the API key would be in working memory. When `recall` returned nothing, it asked the user — but we'd already pre-stored the key via `/session/:id/apikey`. The agent had no way to know the backend auto-loads it from session meta.
+
+**Fix:** Added an explicit "Rocketlane API key handling rule" to the system prompt:
+> The user's Rocketlane API key is automatically loaded from encrypted session storage when you call any Rocketlane tool. You never need to: ask via request_user_approval (unless a tool returns an auth error), check via recall (not in working memory), or pass it as an argument. Just call the tool directly.
+
+**Lesson:** When the backend does something "magic" for the agent (auto-load credentials, auto-retry, auto-cache), the system prompt must explicitly tell the agent about the magic. Otherwise the agent reasons from general principles and invents its own flawed flow.
+
+### Lesson: Anthropic stream events don't carry block IDs on deltas
+**What happened:** When forwarding SSE events from `anthropic.messages.stream()`, I assumed each `content_block_delta` and `content_block_stop` event would carry the `id` of the block it's for. It doesn't — the `id` is only on `content_block_start`. Deltas are implicitly "for the block that most recently started."
+
+**Fix:** `agent/src/agent/loop.ts` has a `StreamState` closure variable that tracks `currentToolUseId`. Set to the block's id on `content_block_start` (for tool_use blocks), cleared on `content_block_stop`. Deltas use `state.currentToolUseId` instead of looking for an id on the delta event itself.
+
+**Lesson:** When building on a streaming API, always verify which fields are on each event type by reading the actual stream output. Don't infer.
+
+### Lesson: Railway GitHub App permissions are fragile
+**What happened:** User reconnected GitHub earlier in Session 1 to grant SSH collaborator access (`inbarajb91-cloud` → `inba-2299/Plansync`). That OAuth flow accidentally revoked Railway's GitHub App access to the repo. Railway kept running the old Hour 0 code; commits `e115507`, `9646527`, `f39119e` (three consecutive big pushes) all went undeployed for hours before we noticed.
+
+**Fix:** User deleted the Railway project entirely and recreated it fresh. The new project creation triggered a fresh GitHub App OAuth, which restored permissions. Railway happened to reassign the SAME public URL (`plansync-production.up.railway.app`), so no env var updates were needed.
+
+**Lesson:** Whenever the user reauthorizes anything GitHub-related, **verify auto-deploy is still working** by bumping a version number, pushing, and curling `/health` uptime. Don't assume Railway/Vercel integrations survive OAuth changes.
+
+**Also:** User offered to transfer everything (GitHub repo + Vercel project) to the same account as Railway for cleaner long-term ownership. Deferred to Session 3 because it's a 20-30 min detour and we were close to 3 AM.
+
+### Lesson: End-to-end with "pre-approved plan" userMessage works
+**What happened:** The first real end-to-end test completed with **zero approval resumes**. I wrote the initial userMessage to include `"I pre-approve the plan — proceed straight through when you reach the final approval step by selecting Approve"`. The agent read that, understood it, and still called `display_plan_for_review` (showing the user what was about to happen) but skipped `request_user_approval` entirely.
+
+**Why it worked:** The system prompt says "Final plan approval before any create_* tool — non-negotiable", but the agent applied judgment: pre-authorization from the user in the prompt counts as approval. This is desirable agentic behavior.
+
+**Lesson:** The agent can be instructed mid-conversation to relax a default rule. That's fine for testing. For demo/Janani, let the agent follow the default rule and the user clicks through the real ApprovalPrompt.
+
+### Decision: Stitch designs inform tomorrow's UI but don't change the architecture
+**What changed:** User shared a Google Stitch design folder (4 screens: `agent_setup`, `agent_chat_upload`, `plan_validation`, `execution_monitor`) as a visual reference. They're multi-page dashboard designs; our architecture is a single-page chat-first agent UI.
+
+**Resolution:** Steal the aesthetic (blue primary, clean cards, typography, plan tree layout, live action log, stats panel) but keep the single-page chat architecture. Skip the sidebar navigation and multi-page flow (both out of scope for single-session agent).
+
+**New addition from Stitch:** the "Plan Integrity" side panel (confidence score + validation checkmarks) is a good pattern I didn't originally plan. Adding it as a component tomorrow morning alongside `PlanReviewTree`.
+
+### Lesson: Formal design doc pays off mid-build
+**What happened:** User invoked `/engineering:system-design` partway through the build. I stopped coding and wrote `docs/DESIGN.md` (~700 lines, 12 architectural decisions with trade-off analysis, 11 risk matrix, full data model, API contracts, control flow, etc.).
+
+**Why this was valuable:** It forced me to articulate the "why" of every decision while still in the middle of executing them. Several pieces of the design doc (artifact store rationale, lazy RL client, blocking tool pattern) became clearer in my head by writing them out, and I caught one mistake (initially I documented the wrong tool count, which I fixed during writing).
+
+**Lesson:** Write the design doc WHILE building, not before (premature) and not after (retrospective, low value). Mid-build is the sweet spot where decisions are fresh but execution has validated them.
+
+---
+
+## Session 3+ — (to be filled in as sessions happen)

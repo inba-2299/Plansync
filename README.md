@@ -4,6 +4,15 @@
 
 Built as the take-home assignment for the **Rocketlane Implementation Manager** role.
 
+## Live
+
+- **Frontend (Vercel):** https://plansync-tau.vercel.app
+- **Agent backend (Railway):** https://plansync-production.up.railway.app
+- **Health check:** https://plansync-production.up.railway.app/health
+- **Source:** https://github.com/inba-2299/Plansync
+
+The agent has been verified end-to-end against the live Rocketlane workspace. A test run on 2026-04-15 created a real Rocketlane project (ID `5000000074663`, name "Plansync E2E Test") with 1 phase, 2 tasks, 1 milestone, and 2 dependencies — all generated autonomously from a hand-written CSV with zero human approvals in the loop.
+
 ## What it is
 
 A properly designed agent (not a wizard) that:
@@ -91,8 +100,10 @@ See [docs/PLAN.md](docs/PLAN.md) § "Build sequence" for full deployment steps.
 
 ## Documentation
 
-- **[docs/PLAN.md](docs/PLAN.md)** — Full architecture, tools, build sequence (canonical)
-- **[CLAUDE.md](CLAUDE.md)** — How to work on this repo (for Claude sessions)
-- **[MEMORY.md](MEMORY.md)** — Decision log, iterations, lessons
-- **[CONTEXT.md](CONTEXT.md)** — Current session state
-- **[PRD_Projectplanagent.md](PRD_Projectplanagent.md)** — Original PRD (superseded by PLAN.md for architecture; still authoritative for PM knowledge + RL data model + validator checks)
+- **[docs/DESIGN.md](docs/DESIGN.md)** — Formal system design document: 12 architectural decisions with trade-offs, full data model, API contracts, control flow, risk matrix, testing strategy. Written mid-build to capture the "why" of every major choice.
+- **[docs/PLAN.md](docs/PLAN.md)** — Canonical build plan: architecture, 21 tools, system prompt composition, file structure, build sequence, verification.
+- **[CLAUDE.md](CLAUDE.md)** — How to work on this repo (for Claude sessions working on the project).
+- **[MEMORY.md](MEMORY.md)** — Decision log and lessons learned, per session. Read to understand *why* the current design exists and what alternatives were rejected.
+- **[CONTEXT.md](CONTEXT.md)** — Current session state, what's next, open questions, environment.
+- **[agent/rl-api-contract.json](agent/rl-api-contract.json)** — Captured Rocketlane API response shapes from a 12-scenario live verification. Ground truth for what the RL API actually returns (vs what PRD §9 claims).
+- **[PRD_Projectplanagent.md](PRD_Projectplanagent.md)** — Original PRD (superseded by PLAN.md for architecture; still authoritative for PM knowledge + RL data model + validator checks).

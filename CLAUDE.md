@@ -10,11 +10,14 @@ Plansync is an AI agent that reads a project plan CSV and creates it as a fully 
 
 | File | What's in it | Read for |
 |---|---|---|
-| `docs/PLAN.md` | **Canonical build plan** — architecture, 21 tools, system prompt composition, file structure, build sequence, risks, verification | Everything. Start here. |
+| `docs/DESIGN.md` | **Formal system design** — requirements, high-level architecture, 12 architectural decisions with trade-offs, data model, API contracts, control flow, risk matrix, testing strategy, "what I'd revisit as it grows" | Understanding *why* the system is built the way it is. Source of truth for architecture. |
+| `docs/PLAN.md` | **Canonical build plan** — architecture, 21 tools, system prompt composition, file structure, build sequence, risks, verification | Everything. Start here for *what to do next*. |
 | `PRD_Projectplanagent.md` | Original 970-line PRD — superseded for architecture but still authoritative for: PM domain knowledge (§4.3 lines 208–276), Rocketlane API reference (§9 lines 753–823), Rocketlane Carbon design tokens (§8.2 lines 614–655), Shard FM Engine demo scenario (§11 lines 888–895), 11 validation checks (§5 Tool 3 lines 442–458), autonomy matrix (§6.2 lines 519–586) | Paste-verbatim content for the agent system prompt and tool implementations |
-| `MEMORY.md` | Decision log, architecture iterations, what we tried and rejected, lessons | Understanding *why* the current design exists |
+| `agent/rl-api-contract.json` | Captured request/response shapes from `test-rl.ts` — ground truth for what Rocketlane's API actually returns (vs what PRD §9 claims) | When in doubt about RL API fields or response envelopes |
+| `MEMORY.md` | Decision log, architecture iterations, what we tried and rejected, lessons learned per session | Understanding *why* the current design exists (historical context) |
 | `CONTEXT.md` | What was just completed, what's next, open questions, environment setup status | Picking up where the last session left off |
 | `README.md` | High-level project overview, quick start, repo layout | Onboarding humans |
+| `plansync_google_stitch design/` | Google Stitch visual design reference — 4 screens (agent_setup, agent_chat_upload, plan_validation, execution_monitor). Multi-page dashboard aesthetic; we adopt the visual language + component designs but keep our single-page chat architecture. | Tomorrow AM frontend UI work |
 
 ## Critical invariants — do not break these
 
