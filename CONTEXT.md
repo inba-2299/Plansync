@@ -10,9 +10,18 @@
 
 ## Status
 
-**Backend is feature-complete and deployed.** The agent's 20-tool dispatcher + real ReAct loop + `/upload` endpoint + session state + memory infrastructure + system prompt are all live on Railway at https://plansync-production.up.railway.app running version 0.1.0. Type-checks clean. Smoke test PASSED — the agent called `update_journey_state` with correct 6-step initialization on a fresh production session.
+**BACKEND IS COMPLETE AND VERIFIED END-TO-END ON PRODUCTION.** Everything planned for tonight got done, including Hour 5.5–7 (real end-to-end run).
 
-**Next session is Tomorrow AM.** Focus: UI rebuild matching the Stitch designs + first real end-to-end CSV test.
+- Railway: https://plansync-production.up.railway.app running **v0.1.2** with all 20 tools + real ReAct loop + `/upload` + `/session/:id/apikey` endpoints
+- **First real CSV test PASSED** with zero approval resumes. Created real Rocketlane project `5000000074663` "Plansync E2E Test" containing:
+  - 1 phase (Discovery, phaseId 5000000190202, dates 2026-04-20 → 2026-04-22)
+  - 2 tasks (Kickoff meeting taskId 5000001557534, Requirements doc taskId 5000001557535)
+  - 1 milestone (Sign-off taskId 5000001557536, type MILESTONE)
+  - 2 dependencies (Requirements → Kickoff, Sign-off → Requirements)
+  - Verified via MCP search — all entities exist in inbarajb.rocketlane.com
+- Agent ran through the full flow autonomously: journey init → execution plan → parse_csv → validate_plan (all 11 checks passed) → display_plan_for_review → create_project → create_phase → create_tasks_bulk → add_dependency → display_completion_summary → end_turn
+
+**Next session is Tomorrow AM.** Focus: frontend UI rebuild matching the Stitch designs. The backend needs no more work unless a UI integration surfaces an edge case.
 
 ## Just completed (Session 2 — all-nighter, commits in reverse order)
 
@@ -60,17 +69,11 @@
 
 ## What's next (Session 3 — Tomorrow AM)
 
-**Goal for Session 3**: Get the first REAL end-to-end CSV run working, then rebuild the frontend UI to match the Stitch aesthetic, then Custom App .zip + BRD + submit.
+**Goal for Session 3**: Rebuild the frontend UI to match the Stitch aesthetic, then Custom App .zip + BRD + submit. Backend is done.
 
-**Priority 1 — First real CSV test (15 min)**
-- Hand-author an 8-row test CSV: 2 phases, 4 tasks, 1 subtask, 1 milestone, 1 dependency. Something the agent can parse end-to-end quickly.
-- POST to `/upload?sessionId=<id>&filename=test.csv` with the file as binary body
-- POST to `/agent` with sessionId + userMessage like "I just uploaded a CSV. Use artifactId <art_X> to parse it, validate, and create the project in Rocketlane. Owner: inbarajb91@gmail.com, customer: 'Plansync Test Run'"
-- Watch the streaming events; verify a real project appears in inbarajb.rocketlane.com
-- If it works: commit + push the Hour 5.5-7 checkpoint
-- If it fails: debug via the streaming events and RL API logs
+**~~Priority 1 — First real CSV test~~** ✅ DONE TONIGHT (commit `3d9c07d`). Real project `5000000074663` created in inbarajb.rocketlane.com. The 4-row test CSV (1 phase, 2 tasks, 1 milestone, 2 deps) ran clean, zero approval resumes. `agent/scripts/test-end-to-end.ts` can be re-run any time to verify the full stack.
 
-**Priority 2 — Frontend UI rebuild (3-4 hours)**
+**Priority 1 — Frontend UI rebuild (3-4 hours)**
 
 The current frontend is the Hour 0 throwaway (purple button, basic chat). Rebuild using the Stitch design aesthetic. Deferred from tonight.
 
