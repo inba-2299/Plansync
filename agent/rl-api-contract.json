@@ -1,0 +1,1025 @@
+{
+  "generatedAt": "2026-04-14T20:05:28.793Z",
+  "baseUrl": "https://api.rocketlane.com/api/1.0",
+  "results": [
+    {
+      "num": 1,
+      "name": "Auth check: GET /projects?pageSize=1",
+      "status": "pass"
+    },
+    {
+      "num": 2,
+      "name": "GET /companies (list customer/vendor companies for context)",
+      "status": "pass"
+    },
+    {
+      "num": 3,
+      "name": "GET /users (list team members + customers)",
+      "status": "pass"
+    },
+    {
+      "num": 4,
+      "name": "POST /projects (create project with autoCreateCompany)",
+      "status": "pass"
+    },
+    {
+      "num": 5,
+      "name": "POST /phases x2 (Discovery, Build)",
+      "status": "pass"
+    },
+    {
+      "num": 6,
+      "name": "POST /tasks x3 (regular tasks in both phases)",
+      "status": "pass"
+    },
+    {
+      "num": 7,
+      "name": "POST /tasks (subtask with parent.taskId)",
+      "status": "pass"
+    },
+    {
+      "num": 8,
+      "name": "POST /tasks (sub-subtask — depth 3, verify unlimited nesting)",
+      "status": "pass"
+    },
+    {
+      "num": 9,
+      "name": "POST /tasks (milestone — type: MILESTONE)",
+      "status": "pass"
+    },
+    {
+      "num": 10,
+      "name": "GET /tasks/{id} (read-back verification)",
+      "status": "pass"
+    },
+    {
+      "num": 11,
+      "name": "POST /tasks/{id}/add-dependencies (two-pass dependency)",
+      "status": "pass"
+    },
+    {
+      "num": 12,
+      "name": "Negative case: POST /phases without dueDate (expect 400)",
+      "status": "pass"
+    }
+  ],
+  "log": [
+    {
+      "method": "GET",
+      "path": "/projects?pageSize=1",
+      "status": 200,
+      "responseBody": {
+        "data": [
+          {
+            "projectId": 5000000072364,
+            "projectName": "[Sample] Acme 2 week onboarding",
+            "startDate": "2026-04-07",
+            "dueDate": "2026-06-03",
+            "createdAt": 1776080675111,
+            "updatedAt": 1776080688393,
+            "owner": {
+              "emailId": "sampleuser1@rocketlane.com",
+              "userId": 5000000027051,
+              "firstName": "Rachel"
+            },
+            "teamMembers": {
+              "members": [
+                {
+                  "emailId": "inbarajb91@gmail.com",
+                  "userId": 5000000027049,
+                  "firstName": "inbarajb91",
+                  "lastName": ""
+                },
+                {
+                  "emailId": "sampleuser2@rocketlane.com",
+                  "userId": 5000000027052,
+                  "firstName": "Paul"
+                },
+                {
+                  "emailId": "sampleuser1@rocketlane.com",
+                  "userId": 5000000027051,
+                  "firstName": "Rachel"
+                }
+              ],
+              "customers": [
+                {
+                  "emailId": "samplecustomer@acme.com",
+                  "userId": 5000000027053,
+                  "firstName": "Richard",
+                  "lastName": "Knox"
+                }
+              ]
+            },
+            "status": {
+              "value": 2,
+              "label": "In progress"
+            },
+            "fields": [],
+            "customer": {
+              "companyId": 5000000031298,
+              "companyName": "Acme"
+            },
+            "partnerCompanies": [],
+            "archived": false,
+            "visibility": "EVERYONE",
+            "createdBy": {
+              "emailId": "inbarajb91@gmail.com",
+              "userId": 5000000027049,
+              "firstName": "inbarajb91",
+              "lastName": ""
+            },
+            "updatedBy": {
+              "emailId": "inbarajb91@gmail.com",
+              "userId": 5000000027049,
+              "firstName": "inbarajb91",
+              "lastName": ""
+            },
+            "currency": {
+              "currencyCode": "USD",
+              "currencyName": "US Dollar",
+              "currencySymbol": "$"
+            }
+          }
+        ],
+        "pagination": {
+          "pageSize": 1,
+          "hasMore": true,
+          "totalRecordCount": 5,
+          "nextPage": "http://api.rocketlane.com/api/1.0/projects?pageSize=1&pageToken=4a1d52f1-8b5f-4a5e-9e76-8496c966d162",
+          "nextPageToken": "4a1d52f1-8b5f-4a5e-9e76-8496c966d162"
+        }
+      },
+      "latencyMs": 1363,
+      "xRequestId": "ff6b5e92-eb61-494d-adfb-6eba6d05e582",
+      "attempt": 1
+    },
+    {
+      "method": "GET",
+      "path": "/companies",
+      "status": 200,
+      "responseBody": {
+        "data": [
+          {
+            "companyId": 5000000031297,
+            "companyName": "Inbaraj B",
+            "companyType": "VENDOR",
+            "createdAt": 1776080645163,
+            "updatedAt": 1776080645163
+          },
+          {
+            "companyId": 5000000031298,
+            "companyName": "Acme",
+            "companyType": "CUSTOMER",
+            "createdAt": 1776080664730,
+            "updatedAt": 1776080669988,
+            "createdBy": {
+              "emailId": "inbarajb91@gmail.com",
+              "userId": 5000000027049,
+              "firstName": "inbarajb91",
+              "lastName": ""
+            },
+            "updatedBy": {
+              "emailId": "inbarajb91@gmail.com",
+              "userId": 5000000027049,
+              "firstName": "inbarajb91",
+              "lastName": ""
+            }
+          },
+          {
+            "companyId": 5000000031299,
+            "companyName": "Modert",
+            "companyType": "CUSTOMER",
+            "createdAt": 1776080664838,
+            "updatedAt": 1776080664841,
+            "createdBy": {
+              "emailId": "inbarajb91@gmail.com",
+              "userId": 5000000027049,
+              "firstName": "inbarajb91",
+              "lastName": ""
+            }
+          },
+          {
+            "companyId": 5000000031416,
+            "companyName": "FM Engine",
+            "companyType": "CUSTOMER",
+            "createdAt": 1776097388948,
+            "updatedAt": 1776097559457,
+            "createdBy": {
+              "emailId": "inbarajb91@gmail.com",
+              "userId": 5000000027049,
+              "firstName": "inbarajb91",
+              "lastName": ""
+            },
+            "updatedBy": {
+              "emailId": "inbarajb91@gmail.com",
+              "userId": 5000000027049,
+              "firstName": "inbarajb91",
+              "lastName": ""
+            }
+          },
+          {
+            "companyId": 5000000031689,
+            "companyName": "Shard",
+            "companyType": "CUSTOMER",
+            "createdAt": 1776154744791,
+            "updatedAt": 1776154745901
+          },
+          {
+            "companyId": 5000000031694,
+            "companyName": "Rocketlane-Implementation",
+            "companyType": "CUSTOMER",
+            "createdAt": 1776156208287,
+            "updatedAt": 1776156209394
+          }
+        ],
+        "pagination": {
+          "pageSize": 100,
+          "hasMore": false,
+          "totalRecordCount": 6
+        }
+      },
+      "latencyMs": 296,
+      "xRequestId": "88115510-2472-4285-a27c-e3d61b17c123",
+      "attempt": 1
+    },
+    {
+      "method": "GET",
+      "path": "/users?pageSize=100",
+      "status": 200,
+      "responseBody": {
+        "data": [
+          {
+            "userId": 5000000027049,
+            "email": "inbarajb91@gmail.com",
+            "firstName": "inbarajb91",
+            "lastName": "",
+            "type": "TEAM_MEMBER",
+            "status": "ACTIVE",
+            "fields": [],
+            "createdAt": 1776080658486,
+            "updatedAt": 1776096938876,
+            "updatedBy": {
+              "emailId": "inbarajb91@gmail.com",
+              "userId": 5000000027049,
+              "firstName": "inbarajb91",
+              "lastName": ""
+            }
+          },
+          {
+            "userId": 5000000027051,
+            "email": "sampleuser1@rocketlane.com",
+            "firstName": "Rachel",
+            "type": "TEAM_MEMBER",
+            "status": "ACTIVE",
+            "fields": [],
+            "createdAt": 1776080666470,
+            "createdBy": {
+              "emailId": "inbarajb91@gmail.com",
+              "userId": 5000000027049,
+              "firstName": "inbarajb91",
+              "lastName": ""
+            },
+            "updatedAt": 1776080667893,
+            "updatedBy": {
+              "emailId": "inbarajb91@gmail.com",
+              "userId": 5000000027049,
+              "firstName": "inbarajb91",
+              "lastName": ""
+            }
+          },
+          {
+            "userId": 5000000027052,
+            "email": "sampleuser2@rocketlane.com",
+            "firstName": "Paul",
+            "type": "TEAM_MEMBER",
+            "status": "ACTIVE",
+            "fields": [],
+            "createdAt": 1776080668039,
+            "createdBy": {
+              "emailId": "inbarajb91@gmail.com",
+              "userId": 5000000027049,
+              "firstName": "inbarajb91",
+              "lastName": ""
+            },
+            "updatedAt": 1776080669376,
+            "updatedBy": {
+              "emailId": "inbarajb91@gmail.com",
+              "userId": 5000000027049,
+              "firstName": "inbarajb91",
+              "lastName": ""
+            }
+          },
+          {
+            "userId": 5000000027053,
+            "email": "samplecustomer@acme.com",
+            "firstName": "Richard",
+            "lastName": "Knox",
+            "type": "CUSTOMER",
+            "status": "ACTIVE",
+            "fields": [],
+            "createdAt": 1776080670027,
+            "createdBy": {
+              "emailId": "inbarajb91@gmail.com",
+              "userId": 5000000027049,
+              "firstName": "inbarajb91",
+              "lastName": ""
+            },
+            "updatedAt": 1776080671004,
+            "updatedBy": {
+              "emailId": "inbarajb91@gmail.com",
+              "userId": 5000000027049,
+              "firstName": "inbarajb91",
+              "lastName": ""
+            }
+          },
+          {
+            "userId": 5000000027054,
+            "email": "samplecustomer@modert.com",
+            "firstName": "Ruth",
+            "lastName": "Bell",
+            "type": "CUSTOMER",
+            "status": "ACTIVE",
+            "fields": [],
+            "createdAt": 1776080671128,
+            "createdBy": {
+              "emailId": "inbarajb91@gmail.com",
+              "userId": 5000000027049,
+              "firstName": "inbarajb91",
+              "lastName": ""
+            },
+            "updatedAt": 1776080671944,
+            "updatedBy": {
+              "emailId": "inbarajb91@gmail.com",
+              "userId": 5000000027049,
+              "firstName": "inbarajb91",
+              "lastName": ""
+            }
+          },
+          {
+            "userId": 5000000027136,
+            "email": "inbarajb91+fmeng@gmail.com",
+            "firstName": "inbarajb91fmeng",
+            "type": "CUSTOMER",
+            "status": "INVITED",
+            "fields": [],
+            "createdAt": 1776100591152,
+            "createdBy": {
+              "emailId": "inbarajb91@gmail.com",
+              "userId": 5000000027049,
+              "firstName": "inbarajb91",
+              "lastName": ""
+            },
+            "updatedBy": {
+              "emailId": "inbarajb91@gmail.com",
+              "userId": 5000000027049,
+              "firstName": "inbarajb91",
+              "lastName": ""
+            }
+          }
+        ],
+        "pagination": {
+          "pageSize": 100,
+          "hasMore": false,
+          "totalRecordCount": 6
+        }
+      },
+      "latencyMs": 355,
+      "xRequestId": "60215f5a-e606-42ae-9949-fd23ffeed7a6",
+      "attempt": 1
+    },
+    {
+      "method": "POST",
+      "path": "/projects",
+      "requestBody": {
+        "projectName": "plansync-test-1776197114083-project",
+        "owner": {
+          "emailId": "inbarajb91@gmail.com"
+        },
+        "customer": {
+          "companyName": "plansync-test-1776197114083-customer"
+        },
+        "startDate": "2026-04-20",
+        "dueDate": "2026-05-20",
+        "autoCreateCompany": true,
+        "description": "Plansync test-rl.ts — safe to delete"
+      },
+      "status": 201,
+      "responseBody": {
+        "projectId": 5000000074638,
+        "projectName": "plansync-test-1776197114083-project",
+        "startDate": "2026-04-20",
+        "dueDate": "2026-05-20",
+        "createdAt": 1776197116473,
+        "updatedAt": 1776197117389,
+        "owner": {
+          "emailId": "inbarajb91@gmail.com",
+          "userId": 5000000027049,
+          "firstName": "inbarajb91",
+          "lastName": ""
+        },
+        "teamMembers": {
+          "members": [
+            {
+              "emailId": "inbarajb91@gmail.com",
+              "userId": 5000000027049,
+              "firstName": "inbarajb91",
+              "lastName": ""
+            }
+          ],
+          "customers": []
+        },
+        "status": {
+          "value": 5,
+          "label": "Proposed"
+        },
+        "fields": [],
+        "customer": {
+          "companyId": 5000000031878,
+          "companyName": "plansync-test-1776197114083-customer"
+        },
+        "partnerCompanies": [],
+        "archived": false,
+        "visibility": "EVERYONE",
+        "createdBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "updatedBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "currency": {
+          "currencyCode": "USD",
+          "currencyName": "US Dollar",
+          "currencySymbol": "$"
+        }
+      },
+      "latencyMs": 3737,
+      "xRequestId": "59deaf49-3f94-4b90-9f6d-76f4318f23f8",
+      "attempt": 1
+    },
+    {
+      "method": "POST",
+      "path": "/phases",
+      "requestBody": {
+        "phaseName": "Discovery",
+        "project": {
+          "projectId": 5000000074638
+        },
+        "startDate": "2026-04-20",
+        "dueDate": "2026-04-27"
+      },
+      "status": 201,
+      "responseBody": {
+        "phaseId": 5000000190135,
+        "phaseName": "Discovery",
+        "project": {
+          "projectId": 5000000074638,
+          "projectName": "plansync-test-1776197114083-project"
+        },
+        "startDate": "2026-04-20",
+        "dueDate": "2026-04-27",
+        "createdAt": 1776197120046,
+        "updatedAt": 1776197120047,
+        "status": {
+          "value": 1,
+          "label": "To do"
+        },
+        "private": false
+      },
+      "latencyMs": 481,
+      "xRequestId": "7161bbbf-7b2e-4e7a-85c5-889f1e19e24d",
+      "attempt": 1
+    },
+    {
+      "method": "POST",
+      "path": "/phases",
+      "requestBody": {
+        "phaseName": "Build",
+        "project": {
+          "projectId": 5000000074638
+        },
+        "startDate": "2026-04-28",
+        "dueDate": "2026-05-20"
+      },
+      "status": 201,
+      "responseBody": {
+        "phaseId": 5000000190136,
+        "phaseName": "Build",
+        "project": {
+          "projectId": 5000000074638,
+          "projectName": "plansync-test-1776197114083-project"
+        },
+        "startDate": "2026-04-28",
+        "dueDate": "2026-05-20",
+        "createdAt": 1776197120569,
+        "updatedAt": 1776197120570,
+        "status": {
+          "value": 1,
+          "label": "To do"
+        },
+        "private": false
+      },
+      "latencyMs": 642,
+      "xRequestId": "5caf282e-5f6f-497e-a36f-a71dec5ecb53",
+      "attempt": 1
+    },
+    {
+      "method": "POST",
+      "path": "/tasks",
+      "requestBody": {
+        "taskName": "Kick-off meeting",
+        "project": {
+          "projectId": 5000000074638
+        },
+        "phase": {
+          "phaseId": 5000000190135
+        },
+        "startDate": "2026-04-20",
+        "dueDate": "2026-04-21",
+        "type": "TASK"
+      },
+      "status": 201,
+      "responseBody": {
+        "taskId": 5000001556834,
+        "taskName": "Kick-off meeting",
+        "startDate": "2026-04-20",
+        "dueDate": "2026-04-21",
+        "archived": false,
+        "createdAt": 1776197121232,
+        "updatedAt": 1776197121273,
+        "createdBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "updatedBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "project": {
+          "projectId": 5000000074638,
+          "projectName": "plansync-test-1776197114083-project"
+        },
+        "status": {
+          "value": 1,
+          "label": "To do"
+        },
+        "fields": [],
+        "private": false
+      },
+      "latencyMs": 817,
+      "xRequestId": "cb985f03-5fde-4495-af46-0b4b73662fd4",
+      "attempt": 1
+    },
+    {
+      "method": "POST",
+      "path": "/tasks",
+      "requestBody": {
+        "taskName": "Stakeholder interviews",
+        "project": {
+          "projectId": 5000000074638
+        },
+        "phase": {
+          "phaseId": 5000000190135
+        },
+        "startDate": "2026-04-22",
+        "dueDate": "2026-04-27",
+        "type": "TASK"
+      },
+      "status": 201,
+      "responseBody": {
+        "taskId": 5000001556835,
+        "taskName": "Stakeholder interviews",
+        "startDate": "2026-04-22",
+        "dueDate": "2026-04-27",
+        "archived": false,
+        "createdAt": 1776197122001,
+        "updatedAt": 1776197122027,
+        "createdBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "updatedBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "project": {
+          "projectId": 5000000074638,
+          "projectName": "plansync-test-1776197114083-project"
+        },
+        "status": {
+          "value": 1,
+          "label": "To do"
+        },
+        "fields": [],
+        "private": false
+      },
+      "latencyMs": 503,
+      "xRequestId": "25a5ba4e-e2be-43dc-ba58-88dfa1db4f1f",
+      "attempt": 1
+    },
+    {
+      "method": "POST",
+      "path": "/tasks",
+      "requestBody": {
+        "taskName": "Configure application",
+        "project": {
+          "projectId": 5000000074638
+        },
+        "phase": {
+          "phaseId": 5000000190136
+        },
+        "startDate": "2026-04-28",
+        "dueDate": "2026-05-15",
+        "type": "TASK"
+      },
+      "status": 201,
+      "responseBody": {
+        "taskId": 5000001556836,
+        "taskName": "Configure application",
+        "startDate": "2026-04-28",
+        "dueDate": "2026-05-15",
+        "archived": false,
+        "createdAt": 1776197122496,
+        "updatedAt": 1776197122517,
+        "createdBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "updatedBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "project": {
+          "projectId": 5000000074638,
+          "projectName": "plansync-test-1776197114083-project"
+        },
+        "status": {
+          "value": 1,
+          "label": "To do"
+        },
+        "fields": [],
+        "private": false
+      },
+      "latencyMs": 520,
+      "xRequestId": "7f4de276-fa31-44e3-b4f3-dc9925c7ae2e",
+      "attempt": 1
+    },
+    {
+      "method": "POST",
+      "path": "/tasks",
+      "requestBody": {
+        "taskName": "Prepare interview questions",
+        "project": {
+          "projectId": 5000000074638
+        },
+        "phase": {
+          "phaseId": 5000000190135
+        },
+        "parent": {
+          "taskId": 5000001556835
+        },
+        "startDate": "2026-04-22",
+        "dueDate": "2026-04-23",
+        "type": "TASK"
+      },
+      "status": 201,
+      "responseBody": {
+        "taskId": 5000001556837,
+        "taskName": "Prepare interview questions",
+        "startDate": "2026-04-22",
+        "dueDate": "2026-04-23",
+        "archived": false,
+        "createdAt": 1776197123144,
+        "updatedAt": 1776197123214,
+        "createdBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "updatedBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "project": {
+          "projectId": 5000000074638,
+          "projectName": "plansync-test-1776197114083-project"
+        },
+        "status": {
+          "value": 1,
+          "label": "To do"
+        },
+        "fields": [],
+        "private": false
+      },
+      "latencyMs": 869,
+      "xRequestId": "6a67d0e5-8efd-499c-9cfa-3ffb85d5287b",
+      "attempt": 1
+    },
+    {
+      "method": "POST",
+      "path": "/tasks",
+      "requestBody": {
+        "taskName": "Draft interview guide",
+        "project": {
+          "projectId": 5000000074638
+        },
+        "phase": {
+          "phaseId": 5000000190135
+        },
+        "parent": {
+          "taskId": 5000001556837
+        },
+        "startDate": "2026-04-22",
+        "dueDate": "2026-04-22",
+        "type": "TASK"
+      },
+      "status": 201,
+      "responseBody": {
+        "taskId": 5000001556838,
+        "taskName": "Draft interview guide",
+        "startDate": "2026-04-22",
+        "dueDate": "2026-04-22",
+        "archived": false,
+        "createdAt": 1776197123971,
+        "updatedAt": 1776197124021,
+        "createdBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "updatedBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "project": {
+          "projectId": 5000000074638,
+          "projectName": "plansync-test-1776197114083-project"
+        },
+        "status": {
+          "value": 1,
+          "label": "To do"
+        },
+        "fields": [],
+        "private": false
+      },
+      "latencyMs": 766,
+      "xRequestId": "b358935c-19c3-42ec-a239-6341e20ca9d6",
+      "attempt": 1
+    },
+    {
+      "method": "POST",
+      "path": "/tasks",
+      "requestBody": {
+        "taskName": "Discovery Sign-off",
+        "project": {
+          "projectId": 5000000074638
+        },
+        "phase": {
+          "phaseId": 5000000190135
+        },
+        "startDate": "2026-04-27",
+        "dueDate": "2026-04-27",
+        "type": "MILESTONE"
+      },
+      "status": 201,
+      "responseBody": {
+        "taskId": 5000001556839,
+        "taskName": "Discovery Sign-off",
+        "startDate": "2026-04-27",
+        "dueDate": "2026-04-27",
+        "archived": false,
+        "createdAt": 1776197124699,
+        "updatedAt": 1776197124736,
+        "createdBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "updatedBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "project": {
+          "projectId": 5000000074638,
+          "projectName": "plansync-test-1776197114083-project"
+        },
+        "status": {
+          "value": 1,
+          "label": "To do"
+        },
+        "fields": [],
+        "private": false
+      },
+      "latencyMs": 734,
+      "xRequestId": "82d8f511-3f4c-4527-9c26-14b614715b4d",
+      "attempt": 1
+    },
+    {
+      "method": "GET",
+      "path": "/tasks/5000001556834",
+      "status": 200,
+      "responseBody": {
+        "taskId": 5000001556834,
+        "taskName": "Kick-off meeting",
+        "startDate": "2026-04-20",
+        "dueDate": "2026-04-21",
+        "archived": false,
+        "createdAt": 1776197121232,
+        "updatedAt": 1776197121273,
+        "createdBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "updatedBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "project": {
+          "projectId": 5000000074638,
+          "projectName": "plansync-test-1776197114083-project"
+        },
+        "status": {
+          "value": 1,
+          "label": "To do"
+        },
+        "fields": [],
+        "private": false
+      },
+      "latencyMs": 594,
+      "xRequestId": "8c72527d-09fd-475e-8caa-8f9acfd79e81",
+      "attempt": 1
+    },
+    {
+      "method": "GET",
+      "path": "/tasks/5000001556837",
+      "status": 200,
+      "responseBody": {
+        "taskId": 5000001556837,
+        "taskName": "Prepare interview questions",
+        "startDate": "2026-04-22",
+        "dueDate": "2026-04-23",
+        "archived": false,
+        "createdAt": 1776197123144,
+        "updatedAt": 1776197123994,
+        "createdBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "updatedBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "project": {
+          "projectId": 5000000074638,
+          "projectName": "plansync-test-1776197114083-project"
+        },
+        "status": {
+          "value": 1,
+          "label": "To do"
+        },
+        "fields": [],
+        "private": false
+      },
+      "latencyMs": 527,
+      "xRequestId": "ec9aeeb0-7dcd-4b32-9ced-22484bfbf9de",
+      "attempt": 1
+    },
+    {
+      "method": "GET",
+      "path": "/tasks/5000001556839",
+      "status": 200,
+      "responseBody": {
+        "taskId": 5000001556839,
+        "taskName": "Discovery Sign-off",
+        "startDate": "2026-04-27",
+        "dueDate": "2026-04-27",
+        "archived": false,
+        "createdAt": 1776197124699,
+        "updatedAt": 1776197124736,
+        "createdBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "updatedBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "project": {
+          "projectId": 5000000074638,
+          "projectName": "plansync-test-1776197114083-project"
+        },
+        "status": {
+          "value": 1,
+          "label": "To do"
+        },
+        "fields": [],
+        "private": false
+      },
+      "latencyMs": 495,
+      "xRequestId": "ec2434e2-6b7e-4cf7-9a07-2b0dfaf4b7e9",
+      "attempt": 1
+    },
+    {
+      "method": "POST",
+      "path": "/tasks/5000001556835/add-dependencies",
+      "requestBody": {
+        "dependencies": [
+          {
+            "taskId": 5000001556834
+          }
+        ]
+      },
+      "status": 200,
+      "responseBody": {
+        "taskId": 5000001556835,
+        "taskName": "Stakeholder interviews",
+        "startDate": "2026-04-20",
+        "dueDate": "2026-04-21",
+        "archived": false,
+        "createdAt": 1776197122001,
+        "updatedAt": 1776197123184,
+        "createdBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "updatedBy": {
+          "emailId": "3e9752f1-f106-4d5c-8f71-9ab3df947272",
+          "userId": 5000000027132,
+          "firstName": "Project from CSV to RL"
+        },
+        "project": {
+          "projectId": 5000000074638,
+          "projectName": "plansync-test-1776197114083-project"
+        },
+        "status": {
+          "value": 1,
+          "label": "To do"
+        },
+        "fields": [],
+        "dependencies": [
+          {
+            "taskId": 5000001556834,
+            "taskName": "Kick-off meeting"
+          }
+        ],
+        "private": false
+      },
+      "latencyMs": 613,
+      "xRequestId": "8a704924-9bde-4ab7-b84e-857f1870beba",
+      "attempt": 1
+    },
+    {
+      "method": "POST",
+      "path": "/phases",
+      "requestBody": {
+        "phaseName": "Should fail",
+        "project": {
+          "projectId": 5000000074638
+        },
+        "startDate": "2026-04-20"
+      },
+      "status": 400,
+      "responseBody": {
+        "errors": [
+          {
+            "errorCode": "BAD_REQUEST",
+            "errorMessage": "Bad Request: Due Date is missing",
+            "field": "dueDate"
+          }
+        ]
+      },
+      "latencyMs": 306,
+      "xRequestId": "f6a9bc70-71e7-44c3-9de1-03fa844edcfc",
+      "attempt": 1,
+      "error": "Rocketlane POST /phases failed: 400 "
+    },
+    {
+      "method": "POST",
+      "path": "/projects/5000000074638/archive",
+      "status": 204,
+      "responseBody": null,
+      "latencyMs": 1064,
+      "xRequestId": "54d4901d-91d3-44cd-8f5d-7160c92acdb3",
+      "attempt": 1
+    }
+  ]
+}

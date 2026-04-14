@@ -52,9 +52,11 @@ coverage/
 .railway/
 .vercel/
 
+# Playwright MCP test artifacts
+.playwright-mcp/
+
 # Monorepo tmp
 tmp/
 
-# Test artifacts
-rl-api-contract.json
+# Test artifacts (keep rl-api-contract.json — it's ground-truth API docs)
 test-project-*.json
