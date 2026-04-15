@@ -26,8 +26,15 @@ export function getRedis(): Redis {
   return client;
 }
 
-/** TTL (seconds) for every session key. 48 hours. */
-export const SESSION_TTL_SECONDS = 48 * 60 * 60;
+/**
+ * TTL (seconds) for every session key. 7 days.
+ *
+ * Was 48h originally; bumped to 7d on 2026-04-15 so the demo + any
+ * follow-up reviews have a comfortable window. This will become an
+ * admin-configurable setting once the /admin portal is built — for
+ * now it lives here as a constant.
+ */
+export const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 /** Namespace helper: produces canonical keys for a session */
 export const key = {
