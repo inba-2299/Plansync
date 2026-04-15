@@ -83,8 +83,27 @@ export type AgentEvent =
   | { type: 'journey_update'; steps: JourneyStep[] }
   | { type: 'memory_write'; key: string }
   | { type: 'awaiting_user'; toolUseId: string; payload: unknown }
+  | {
+      // Emitted when we catch a 429 from Anthropic and are about to retry.
+      // The frontend renders a dedicated "Rate limited, retrying in Xs"
+      // card that replaces itself on each subsequent rate_limited event
+      // and clears when the next text_delta or tool_use_start fires.
+      type: 'rate_limited';
+      retryInSeconds: number;
+      attempt: number;
+      maxAttempts: number;
+      message?: string;
+    }
   | { type: 'done'; stopReason?: string }
-  | { type: 'error'; message: string };
+  | {
+      type: 'error';
+      message: string;
+      // Subtype hint for the frontend so it can render a specific recovery
+      // card (e.g. 'rate_limit' → show "wait + retry" guidance with a
+      // "Start new session" escape hatch; 'auth' → prompt for a new API
+      // key; 'generic' → default red banner).
+      kind?: 'rate_limit' | 'auth' | 'generic';
+    };
 
 // ---------- Session state ----------
 

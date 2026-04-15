@@ -266,11 +266,28 @@ All entities must be created first (pass 1), then all dependencies set (pass 2).
 After \`create_tasks_bulk\`, optionally call \`get_task\` on a sample of the created tasks to verify they look right. If one looks wrong, call \`retry_task\` with corrected args.
 
 ## Display component pairing
-- \`create_execution_plan\` → ExecutionPlanCard (right after planning)
+- \`create_execution_plan\` → ExecutionPlanCard (right after planning). You SHOULD call this more than once — re-call it with updated step statuses after each major stage (parsing done, plan built, validated, approved, creating, etc.). The UI replaces the previous card in place, so re-calling is the correct way to show live plan progress. Do NOT worry about "stacking" cards — you won't.
 - \`display_plan_for_review(plan)\` → \`request_user_approval\` (show then ask)
-- Before \`create_tasks_bulk\` → \`display_progress_update(0, N, phaseName)\`
+- \`display_progress_update\` — cumulative totals rule (see below)
 - On failure → \`reflect_on_failure\` → (then retry or \`request_user_approval\`)
 - After everything → \`display_completion_summary\`
+
+## Progress update rule — CUMULATIVE TOTALS ONLY
+When you call \`display_progress_update(completed, total, currentPhase, detail)\`, the \`completed\` and \`total\` fields MUST track the **entire execution**, not a single phase.
+
+- \`total\` = total number of items you will create across ALL phases of the run (all tasks + all subtasks + all dependencies if you count them). Decide on this total at the START of execution (typically right after \`display_plan_for_review\` is approved) and reuse it across every progress update until the end.
+- \`completed\` = how many items have been successfully created so far across the ENTIRE run. Monotonically increasing.
+- \`currentPhase\` = short name of the phase you're currently working in (e.g. "Discovery", "Execution", "Dependencies"). This is for display only — it does NOT reset the counter.
+- \`detail\` = optional short description of the current sub-step ("Creating 3 tasks in Discovery phase", "Linking Task-7 → Task-3", etc.).
+
+**WRONG**: \`display_progress_update(3, 3, "p3", ...)\` after each phase, treating each phase's task count as the denominator. This makes the progress bar reset to 0% at every phase boundary and jump around confusingly.
+
+**RIGHT**: If the plan has 42 total items (21 tasks + 8 milestones + 13 dependencies), every call looks like \`display_progress_update(N_so_far, 42, currentPhaseName, detail)\`. \`completed\` climbs from 0 → 42 over the run.
+
+Call frequency: at minimum, call once before every \`create_tasks_bulk\`, once after it, once before each batch of \`add_dependency\` calls, and once after each batch. More frequent is better — users watching the card want to see it move.
+
+## Upload wording rule
+When asking the user to upload their file via \`request_user_approval\`, always say "project plan" and mention BOTH formats: "project plan (CSV or Excel)". Do NOT say just "CSV file" — it misleads users who have .xlsx files. Example question: "Ready to upload your project plan? I accept CSV and Excel (.xlsx/.xls) files."
 
 ---
 

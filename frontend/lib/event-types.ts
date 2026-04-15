@@ -32,8 +32,19 @@ export type AgentEvent =
         context?: string | null;
       } | null;
     }
+  | {
+      type: 'rate_limited';
+      retryInSeconds: number;
+      attempt: number;
+      maxAttempts: number;
+      message?: string;
+    }
   | { type: 'done'; stopReason?: string }
-  | { type: 'error'; message: string };
+  | {
+      type: 'error';
+      message: string;
+      kind?: 'rate_limit' | 'auth' | 'generic';
+    };
 
 /**
  * What the user clicks on in an ApprovalPrompt — sent back to /agent

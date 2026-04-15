@@ -59,7 +59,7 @@ app.get('/', (_req: Request, res: Response) => {
 app.get('/health', (_req: Request, res: Response) => {
   res.json({
     status: 'ok',
-    version: '0.1.5',
+    version: '0.1.6',
     env: {
       anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
       redis: Boolean(process.env.UPSTASH_REDIS_REST_URL),
