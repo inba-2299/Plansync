@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/cn';
 import { ApiKeyCard } from './ApiKeyCard';
+import { FileUploadCard } from './FileUploadCard';
 import { Markdown } from '../Markdown';
 
 interface ApprovalOption {
@@ -23,6 +24,8 @@ interface ApprovalPromptProps {
   sessionId: string;
   toolUseId: string;
   onApiKeySubmit: (apiKey: string) => void;
+  // For special handling when the agent asks for a file upload:
+  onFileUploaded: (artifactId: string, filename: string, rowCount: number) => void;
 }
 
 /**
@@ -32,10 +35,18 @@ interface ApprovalPromptProps {
  * `request_user_approval` and the loop pauses until the user clicks an
  * option (which POSTs back as a uiAction).
  *
- * Special case: if the question is about the API key and one of the
- * options has value="enter_key" or similar, we render an inline
- * ApiKeyCard instead of the chip list. This is a UX detail — typing
- * an API key is different from picking a yes/no.
+ * Two special cases:
+ *   1. API key: question mentions "API key" and has an "enter/submit/paste"
+ *      style option → render ApiKeyCard inline instead of chips.
+ *   2. File upload: question mentions "upload/attach/CSV/Excel/project plan"
+ *      and has an "upload/attach" style option → render FileUploadCard
+ *      inline instead of chips. This is the fix for the "I clicked Upload
+ *      CSV and nothing happened" UX bug — previously the button just sent
+ *      a confirmation back to the agent and the user still had to find the
+ *      paperclip.
+ *
+ * Both cases bypass the option chip flow because typing a key or picking
+ * a file isn't a yes/no decision.
  */
 export function ApprovalPrompt({
   question,
@@ -44,14 +55,55 @@ export function ApprovalPrompt({
   answered,
   selectedLabel,
   onSelect,
+  sessionId,
   onApiKeySubmit,
+  onFileUploaded,
 }: ApprovalPromptProps) {
-  // Detect API key request: question mentions key + has only one option to "enter"
+  // Detect API key request: question mentions key + has an option to enter one
   const isApiKeyRequest =
     /api\s*key/i.test(question) &&
     options.some((o) => /enter|submit|paste|provide/i.test(o.label));
 
+  // Detect file upload request: question or any option mentions upload/attach/file/CSV/Excel
+  const isFileUploadRequest =
+    !isApiKeyRequest &&
+    (/upload|attach|csv|excel|xlsx|xls|project plan|spreadsheet/i.test(question) ||
+      options.some((o) => /upload|attach|file|csv|excel|xlsx/i.test(o.label)));
+
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
+
+  // File upload special case — render the FileUploadCard inline
+  if (isFileUploadRequest && !answered) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="space-y-2"
+      >
+        <div className="flex items-start gap-3 px-1">
+          <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+            <span className="material-symbols-outlined text-primary text-base">
+              upload_file
+            </span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] uppercase tracking-widest font-bold text-primary mb-0.5">
+              Agent needs input
+            </div>
+            <div className="font-headline font-bold text-on-surface text-base">
+              {question}
+            </div>
+            {context && (
+              <div className="text-xs text-on-surface-variant mt-1.5">
+                <Markdown content={context} />
+              </div>
+            )}
+          </div>
+        </div>
+        <FileUploadCard sessionId={sessionId} onUploaded={onFileUploaded} />
+      </motion.div>
+    );
+  }
 
   if (isApiKeyRequest && !answered) {
     if (showApiKeyInput) {
