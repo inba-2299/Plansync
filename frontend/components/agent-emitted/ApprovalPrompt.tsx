@@ -59,16 +59,25 @@ export function ApprovalPrompt({
   onApiKeySubmit,
   onFileUploaded,
 }: ApprovalPromptProps) {
-  // Detect API key request: question mentions key + has an option to enter one
-  const isApiKeyRequest =
-    /api\s*key/i.test(question) &&
-    options.some((o) => /enter|submit|paste|provide/i.test(o.label));
+  // Detect API key request: if the question mentions "API key" at all,
+  // render the ApiKeyCard regardless of the option labels. We used to also
+  // require at least one option label to contain enter/submit/paste/
+  // provide, but different models generate different option labels:
+  //   - Sonnet:  [{label: "Enter API key"}]  ← matched the old regex
+  //   - Haiku:   [{label: "I have my API key ready"}, {label: "I need to find it"}]  ← didn't match
+  // The card-vs-chips decision should be semantic ("is this a question
+  // about entering an API key?") not lexical, and the question text is a
+  // reliable signal on its own. The options are bypassed entirely when
+  // the card is shown, so they don't matter for this flow.
+  const isApiKeyRequest = /api.?key/i.test(question);
 
-  // Detect file upload request: question or any option mentions upload/attach/file/CSV/Excel
+  // Same broadening for file upload: match on question alone. Haiku uses
+  // option labels like "I'm ready to upload" which don't match upload/
+  // attach/file/csv/excel, and we want the FileUploadCard to render
+  // whenever the question is about uploading a file.
   const isFileUploadRequest =
     !isApiKeyRequest &&
-    (/upload|attach|csv|excel|xlsx|xls|project plan|spreadsheet/i.test(question) ||
-      options.some((o) => /upload|attach|file|csv|excel|xlsx/i.test(o.label)));
+    /upload|attach|csv|excel|xlsx|xls|project plan|spreadsheet/i.test(question);
 
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
 
