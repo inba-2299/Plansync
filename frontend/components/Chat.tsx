@@ -714,6 +714,28 @@ export function Chat() {
         handleAgentEvent(ev);
       }
 
+      // Post-replay: mark previously-answered approvals as answered.
+      //
+      // Why this is needed: `awaiting_user` events create UiMessages
+      // with `answered: false`. But the USER'S CLICK that resolved
+      // them isn't an event in the log — it's a separate POST /agent
+      // call with a `uiAction` body. So on replay, every approval
+      // looks fresh even though the user already dealt with them.
+      //
+      // The rule: if there's any event in the log AFTER an
+      // `awaiting_user`, that approval was answered (evidenced by the
+      // fact that the agent kept going). Only the VERY LAST
+      // `awaiting_user` is unanswered, and only if it's literally the
+      // last event in the log.
+      //
+      // We don't know WHICH option the user picked (not captured in
+      // events), so we show a generic "Answered" label. This is a
+      // small UX loss compared to showing the specific choice, but
+      // it's honest — the ApprovalPrompt renders with a green
+      // checkmark and collapses the chips, making it clear the user
+      // has already handled this one.
+      markPriorApprovalsAsAnswered(events);
+
       // Force streaming state to settle. handleAgentEvent only sets
       // streaming=false on terminal events (done/awaiting/error); if
       // the last event was a text_delta or tool_use_start (mid-stream
@@ -747,6 +769,43 @@ export function Chat() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---------- Replay helper: mark prior approvals as answered ----------
+  //
+  // Called during initial hydration AND during "check for updates"
+  // after fetching a fresh event log. Walks the events list backward
+  // to find the last awaiting_user event; any OTHER awaiting_user
+  // in the list must have been answered (otherwise the agent wouldn't
+  // have continued past it). Only the last awaiting is still pending,
+  // and only if it's literally the last event in the log (i.e. the
+  // current state really is "waiting on user input").
+
+  const markPriorApprovalsAsAnswered = useCallback((events: AgentEvent[]) => {
+    // Find the toolUseId of the currently-pending approval (if any).
+    // It's the last awaiting_user event AND it must be the last event
+    // overall. Any awaiting_user followed by other events was answered.
+    let pendingToolUseId: string | null = null;
+    const lastIdx = events.length - 1;
+    if (lastIdx >= 0 && events[lastIdx].type === 'awaiting_user') {
+      const last = events[lastIdx] as Extract<AgentEvent, { type: 'awaiting_user' }>;
+      pendingToolUseId = last.toolUseId;
+    }
+
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.kind !== 'awaiting') return m;
+        // The currently-pending approval stays as-is (still unanswered)
+        if (m.toolUseId === pendingToolUseId) return m;
+        // Already answered? Leave it alone (preserve the real label if
+        // we somehow have it from a live interaction that happened
+        // before this replay).
+        if (m.answered) return m;
+        // Mark as answered with a generic label. We can't recover the
+        // user's actual selection because it wasn't an event.
+        return { ...m, answered: true, selectedLabel: 'Answered' };
+      })
+    );
   }, []);
 
   // ---------- Handlers: New session + Check for updates ----------
@@ -807,6 +866,11 @@ export function Chat() {
     }
     seenEventCountRef.current = events.length;
 
+    // Re-run the "mark answered" pass over the full events list so
+    // any newly-appended awaiting_user events correctly update the
+    // answered state of the now-no-longer-last approvals.
+    markPriorApprovalsAsAnswered(events);
+
     // Re-classify hydration mode based on the new last event
     const last = events[events.length - 1];
     const isTerminal =
@@ -817,7 +881,7 @@ export function Chat() {
       currentReasoningIdRef.current = null;
       currentReasoningStartedAtRef.current = null;
     }
-  }, [sessionId, handleAgentEvent]);
+  }, [sessionId, handleAgentEvent, markPriorApprovalsAsAnswered]);
 
   // ---------- Classify messages into sides (memoized) ----------
 
