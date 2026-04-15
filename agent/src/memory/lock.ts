@@ -1,4 +1,5 @@
 import { getRedis, key } from './redis';
+import { recordLockAcquired, recordLockReleased } from '../admin/counters';
 
 /**
  * Per-session lock — prevents two concurrent POST /agent invocations from
@@ -32,6 +33,11 @@ export async function acquireLock(
   });
   if (result !== 'OK') return null;
 
+  // Mark this session as active in the admin counters so the dashboard
+  // can show an accurate "Active now" count without polling every
+  // session's pending state. Fire-and-forget.
+  void recordLockAcquired(sessionId).catch(() => {});
+
   return {
     release: async () => {
       // Safe release: only delete if we still own the token (best-effort).
@@ -44,6 +50,12 @@ export async function acquireLock(
         }
       } catch {
         /* ignore — the lock will expire on its own */
+      } finally {
+        // Remove from admin's active-locks set regardless of whether the
+        // delete succeeded above — the lock will expire on its own via
+        // Redis TTL anyway, so the set membership is what the admin
+        // dashboard actually reads.
+        void recordLockReleased(sessionId).catch(() => {});
       }
     },
   };

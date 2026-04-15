@@ -6,18 +6,33 @@
 
 ## Last updated
 
-**2026-04-15, late afternoon — Session 4 continuing post-compact, just shipped Commit 2g (refresh-safe sessions via Redis event log replay) + a follow-up fix for approval answered-state on replay.**
+**2026-04-15, evening — Session 4 continuing post-compact, just pushed the Admin Portal (Commit `e140986`) to the `admin-portal` branch for user verification. Main branch has Commits 2c, Custom App v2 (rli-based), and 2h (system prompt hardening + 13px zoom) all shipped and verified.**
 
 ## Status
 
-**FULL STACK IS LIVE AND VERIFIED END-TO-END ON SONNET.** Plus the two biggest Session 4 bugs are now solved: (1) Commit 2f fixed the mid-Haiku-run white-page crash (`PlanReviewTree.dependsOn.length` on undefined), and (2) Commit 2g fixed the "refresh loses everything" problem by persisting every SSE event to Redis and replaying it on mount. Core architecture is stable and refresh-safe. Remaining submission work is Commit 2c UX polish → Custom App .zip → BRD document.
+**ALL CRITICAL BUGS FIXED. CUSTOM APP INSTALLED AND VERIFIED RUNNING INSIDE ROCKETLANE. ADMIN PORTAL BUILT ON A BRANCH AWAITING END-TO-END VERIFICATION.** The remaining submission work is (1) verify the admin portal end-to-end via a preview Railway deployment, (2) merge the admin-portal branch to main, and (3) write + commit the BRD document.
 
-- **Railway backend** v0.1.13: https://plansync-production.up.railway.app — SSE heartbeat (every 15s) + batch `execute_plan_creation` tool + interactive metadata rule + env-var model + 429 retry + Rocketlane URL rule + execution plan final-state rule + **per-session event log persistence** (new: `session:{id}:events` list in Redis, TTL 7d, wraps `emit()` fire-and-forget so events are captured even after client disconnect)
-- **Vercel frontend** `96f9c59`: https://plansync-tau.vercel.app — split UI (user left 40%, agent right 60%), pinned cards inside agent column, collapsible execution plan, 14px base font scaling, responsive fallback below 1024px, **ErrorBoundary wrapping Chat**, **PlanReviewTree hardened against missing dependsOn**, **localStorage sessionId + hydration replay + mid-stream refresh banner + "New session" button in header + post-replay approval answered-state marking**
-- **Model**: `ANTHROPIC_MODEL=claude-haiku-4-5` currently set on Railway
-- **Cost trajectory**: $3/run (pre-optimization, Sonnet) → $0.86/run (post-2e + all optimizations, Sonnet) → predicted $0.20-0.25/run (Haiku)
+Specifically:
+- **Commit 2c** (`537fa3e`) — UX polish: FileUploadCard title revert, ApprovalPrompt preamble strip, journey_update defensive normalization, JourneyStepper status guard, client-side file size validation. SHIPPED on main.
+- **Custom App v1** (`3014b4d`) — Initial hand-crafted `manifest.json` + iframe shell. Rejected by Rocketlane with `Invalid zip: rli-dist/deploy.json not found`. Kept in history for audit trail but superseded.
+- **Custom App v2** (`becaf10`) — Rebuilt using `@rocketlane/rli` CLI. Proper `index.js` manifest + widgets/plansync/ directory + rli-generated deploy.json. 199 KB `plansync-custom-app.zip` installed and verified inside `inbarajb.rocketlane.com`. The iframe wrapper inside the widget HTML loads `https://plansync-tau.vercel.app?embed=1` so users get live frontend updates without rebuilding the .zip. Widget surfaces at both `left_nav` and `project_tab`. SHIPPED on main.
+- **Commit 2h** (`bf53e84`) — System prompt hardening after a Redis session post-mortem revealed Anthropic non-determinism: agent occasionally prose-asked "Does the plan look good?" instead of calling `request_user_approval`, deadlocking the session with no actionable card for the user to click. Fix: two new HARD RULE sections at the top of § 5 (one against prose-asking with 9 forbidden patterns + required replacements, one against lagging the JourneyStepper) plus a new § 6 "re-read the hard rules" reminder at the end to combat prompt cache drift. Also UI zoom from 14px → 13px (total ~18.75% smaller than browser default). SHIPPED on main.
+- **Admin Portal** (`e140986`) — On `admin-portal` branch, NOT YET on main. Lightweight operator dashboard at `/admin` with HMAC-signed cookie auth (login form, not Basic Auth), 6 stat cards (runs today, success rate, active now, errors today, est. cost today, avg cost/run), runtime config editor (model, max tokens, 429 retries), 22-tool grid with toggles, recent sessions table with date/status/search filters, daily usage breakdown by model. 8 new backend routes under `/admin/*`. `loop.ts` modified to read model/maxTokens/maxRetries/disabledTools from Redis (with env var fallback) so admin changes apply on the next turn without a Railway redeploy. Awaiting user setup of a separate Railway preview deployment for verification.
 
-**Next focus**: Commit 2c UX polish (~20 min: FileUploadCard title, ApprovalPrompt preamble strip, journey_update defensive guards, JourneyStepper status guard, delete stray PNG) → Custom App .zip (~30-45 min) → BRD document (~45-60 min) → submit. The three known crash/UX pain points (refresh loses state, white-page on PlanReviewTree, SSE hang on Haiku) are all resolved.
+### Live system pointers
+
+- **Railway backend** v0.1.13 (main): https://plansync-production.up.railway.app — all of the above EXCEPT the admin portal. Still on `bf53e84`.
+- **Railway backend preview** (admin-portal): user is setting up a separate Railway service for the `admin-portal` branch. Will have its own URL like `plansync-preview-xxxx.up.railway.app`. Shares the same Upstash Redis so the dashboard shows real session data.
+- **Vercel frontend** `bf53e84` (production): https://plansync-tau.vercel.app — production frontend, 13px base font, Commit 2h prose-asking fix in place.
+- **Vercel frontend preview** (admin-portal branch): auto-deployed by Vercel at a preview URL. User is deciding whether to test via that preview URL (with a preview-only `NEXT_PUBLIC_AGENT_URL` override) or run the frontend locally pointed at the preview Railway.
+- **Model**: `ANTHROPIC_MODEL=claude-haiku-4-5` currently on Railway
+- **Cost trajectory**: $3/run (pre-optimization, Sonnet) → $0.86/run (post-2e, Sonnet) → predicted $0.20-0.25/run (Haiku)
+
+**Next focus** (in priority order):
+1. User sets up the preview Railway service for `admin-portal` branch (with shared Redis + new `ADMIN_USERNAME` / `ADMIN_PASSWORD` env vars) and verifies the admin portal end-to-end.
+2. If verified → merge `admin-portal` → `main`. Railway and Vercel prod will redeploy with the admin portal live at `plansync-tau.vercel.app/admin`.
+3. Write + commit the BRD document (`BRD.md`, already drafted and sitting uncommitted in the working tree — needs an update for admin portal + Commit 2h + Custom App v2 details, then commit).
+4. Final submission.
 
 ## Just completed (Session 4 — commits in chronological order)
 
@@ -101,6 +116,103 @@ These commits arrived after Inbaraj flagged "chat input is enabled while agent i
     - `CompletionCard`: removed the broken `app.rocketlane.com/projects/${projectId}` URL fallback. Now hides the "View in Rocketlane" button entirely if the agent didn't pass a fully-qualified `projectUrl`.
     - `ErrorBoundary`: new class component (React error boundaries require classes) wrapping `Chat` in `app/page.tsx`. Catches any render crash in any agent-emitted card and renders a recoverable "Something went wrong" card with error details + "Reset view" (setState) and "Full reload" (window.location.reload) buttons. Second line of defense — doesn't fix bugs but converts white-page-of-death into recoverable error card.
     - Verified: `npm run build` passes clean.
+
+### Phase 10: Commit 2c UX polish (already shipped — documented after the fact)
+
+15. **`537fa3e`** — Commit 2c: Five small fixes that had been queued through Session 4, plus hygiene:
+    - **FileUploadCard title revert** — "Upload your project plan" → "Drag and drop file". Matches the Stitch design reference that had gotten lost during Session 3 rebuild. Helper text shortened to "Supports CSV, XLSX, XLS — max 10 MB".
+    - **FileUploadCard client-side validation** — file size + extension check BEFORE the upload starts. Before this, a 50MB drop would hang for ~10 seconds then fail with a generic 413 from `express.raw` — felt broken. Now shows a clean inline error immediately. Mirrors the backend's 10MB `MAX_UPLOAD_SIZE_BYTES` constant. Also validates against `.csv/.xlsx/.xls` extensions upfront.
+    - **ApprovalPrompt preamble strip on file-upload branch** — previously rendered TWO stacked headers above the FileUploadCard ("Agent needs input / Please upload..." then the card's own "Drag and drop file" header). Visually read as duplicate cards. Now renders the FileUploadCard alone with no preamble.
+    - **`Chat.tsx` `journey_update` handler defensive normalization** — same risk class as the `dependsOn` crash from Commit 2f. Backend types `steps` as `JourneyStep[]` but at runtime the event arrives as parsed JSON and could be malformed. New normalization filter at the SSE event boundary coerces each step to `{id, label, status}` with safe defaults; unknown status values fall back to `pending`. Prevents a future "agent emits weird step shape" bug from turning into a UI crash.
+    - **JourneyStepper status guard** — belt-and-suspenders: `styles[step.status]` used to return `undefined` for an unknown status, rendering a colorless pill. Now falls back to `pending` styles. Chat.tsx normalizes at the SSE boundary already, so this is backup defense.
+    - **Stray `haiku-test-initial.png` deleted** from the repo root + `.gitignore` rule added for `*-test-*.png/jpg` and `*-screenshot-*.png/jpg` so future test artifacts don't leak into the repo.
+    - Verified: `npm run build` clean.
+
+### Phase 11: Custom App pivot — manifest.json → @rocketlane/rli
+
+16. **`3014b4d`** — Custom App v1 (RETROSPECTIVELY BROKEN): Initial attempt using a hand-crafted `manifest.json` + iframe `index.html` + `icon.svg` + manual `zip` build script. 14 components including the ErrorBoundary + `?embed=1` handler in Chat.tsx that hides the Plansync header when loaded inside Rocketlane. Inbaraj uploaded this `.zip` to `inbarajb.rocketlane.com` and the upload validator rejected it with: `Invalid zip: rli-dist/deploy.json not found in the uploaded file.` The rejection error is what revealed that Rocketlane Custom Apps have a completely different packaging format than I assumed. See MEMORY.md "Decision: Custom App pivot from manifest.json to @rocketlane/rli" for the full story.
+
+17. **`becaf10`** — Custom App v2 (WORKS): Rebuilt from scratch after research found the official Rocketlane developer documentation and the `@rocketlane/rli` CLI. Key findings:
+    - Rocketlane Custom Apps use `index.js` (a Node module declaring widgets/serverActions/installationParams), NOT `manifest.json`
+    - The CLI (`@rocketlane/rli`) scaffolds projects with `rli init`, builds with `rli build`, and produces `app.zip` containing `rli-dist/deploy.json` + `rli-dist/r.js` + `rli-dist/rli-server.js` + bundled widget source files
+    - `deploy.json` is auto-generated from `index.js` during the build
+    - Widgets can declare multiple surfaces (`left_nav`, `accounts_tab`, `project_tab`, `customer_portal_widget`)
+    - Widget entrypoints point to LOCAL bundled HTML files — but those files are regular HTML, so they can contain iframes to external URLs (preserving the "live updates from Vercel" story)
+    
+    Implementation:
+    - `npm install -g @rocketlane/rli`
+    - `rli init` in a temp directory → got the basic template → stripped down to one widget at both `left_nav` and `project_tab`
+    - `custom-app/index.js` declares the Plansync widget with clean metadata
+    - `custom-app/widgets/plansync/index.html` is a full-viewport iframe wrapper loading `https://plansync-tau.vercel.app?embed=1` with a loading placeholder (purple gradient bolt)
+    - `custom-app/widgets/plansync/icon.svg` matches the Plansync brand
+    - `custom-app/build.sh` wraps `rli build` and renames the output to `plansync-custom-app.zip`, asserts `rli-dist/deploy.json` is present in the output
+    - `custom-app/README.md` documents the architecture, install instructions, versioning, and known unknowns
+    - `.gitignore` updated to exclude `custom-app/dist/`, `custom-app/rli-dist/`, `custom-app/.rli/`, `custom-app/node_modules/`, `custom-app/app.zip`, `custom-app/package-lock.json`
+    - `plansync-custom-app.zip` (199 KB) committed for direct download from GitHub at `https://github.com/inba-2299/Plansync/raw/main/custom-app/plansync-custom-app.zip`
+    - **Verified installed and working** inside `inbarajb.rocketlane.com` workspace (user confirmed "that worked like magic"). The iframe approach preserves the live-updates-from-Vercel story: any frontend change deploys automatically without rebuilding the .zip.
+
+### Phase 12: System prompt hardening + UI zoom to 13px (post-mortem of session #2)
+
+18. **`bf53e84`** — Commit 2h: Two tightly-related fixes after diagnosing a bad session in production via Redis inspection scripts.
+
+    **Background.** Inbaraj tested the Custom App inside Rocketlane. First session in the iframe went off-rails: only 2 `request_user_approval` calls (vs 8 in a clean session), only 2 `journey_update` calls (vs 4), agent rendered the plan review tree then STREAMED PROSE saying "Great! Does the plan look good to you? Let me know..." and ended the turn with `done`. No approval card, no metadata gathering, user saw a question with no button to click. Had to click "New session" to recover.
+
+    **Diagnosis.** I wrote `/tmp/inspect-sessions.mjs` and `/tmp/diff-sessions.mjs` using direct Upstash REST calls to compare the bad session (`web-1776262858915-zdxt4zse`) against a clean one (`web-1776263028546-97q9krdl`) created 3 minutes later. Side-by-side the tool call sequences diverged at step 12: bad session skipped `request_user_approval` for plan approval, upload, customer, owner, dates, AND final confirmation — 6 missing approvals. Same backend, same model, 3 minutes apart. Classic Anthropic non-determinism.
+
+    **Fix in system-prompt.ts:**
+    - New **"HARD RULE — NEVER prose-ask the user for input"** section at the top of § 5 (Behavioral Rules). 9 forbidden prose patterns (all pulled from the real bad session: "Does the plan look good?", "What should the project be called?", "Are you ready to upload?", etc.). Required `request_user_approval` replacements for the three most common cases with concrete option labels. A pre-turn-end self-check with three questions the agent must ask itself. References the actual bad session as a cautionary story: "A real session in production hit this exact bug... This must never happen again."
+    - New **"HARD RULE — Update the JourneyStepper after EVERY phase transition"** section with 7 minimum transitions explicitly listed, the observed anti-pattern called out by name, and the rule that the FIRST tool call on every resumed turn should usually be `update_journey_state`.
+    - New **§ 6 "Re-read the hard rules before every tool call"** at the end of the prompt, specifically to combat prompt-cache drift (Anthropic caches this whole prompt after turn 1; by turn 5 the top rules feel like "background" to the model). Forces the model to re-ask itself the two HARD RULE questions at every tool call decision point.
+
+    **Fix in `frontend/app/globals.css`:** base font `14px` → `13px`. Total scale ~18.75% smaller than the 16px browser default. Scale history comment updated with the full progression (16 → 14 → 13).
+
+    **What I deliberately did NOT add:**
+    - **No frontend recovery hint.** Initial plan was to auto-focus the input when the agent ends a turn without a pending approval. Inbaraj pushed back ("would this cause the agent to an orchestrated app?") — and in the strict sense yes, it's detecting a failure mode and branching behavior on it. Violates invariant #2 ("Frontend has zero business logic"). Dropped entirely. If the agent still drifts after the prompt fix, we harden more on the backend side, not add frontend guesswork.
+    - **No auto-recovery tool** (a backend stuck-detector that nudges the agent back on track). Too invasive for v1.
+
+    Verified: `npx tsc --noEmit` + `npm run build` clean.
+
+### Phase 13: Admin portal (on admin-portal branch, NOT on main yet)
+
+19. **`e140986`** — Admin portal. 11 files added, ~3275 insertions. Scope: lightweight operator dashboard for observability + runtime agent config + tool toggle UI + token usage tracking + cost estimation.
+
+    Originally proposed a full-blown admin portal with interrupt/stop. Inbaraj scoped it down: no interrupt/stop (input-disable is enough), yes to admin portal but lightweight, must include avg cost/run, must include tool toggle UI as a showcase, login form instead of Basic Auth, separate branch to avoid breaking prod.
+
+    **Backend (`agent/src/admin/*`):**
+    - `auth.ts` — HMAC-SHA-256 signed admin token (reuses `ENCRYPTION_KEY`), 2-hour lifetime, `verifyAdminCredentials` does constant-time comparison, `isAdminPortalConfigured` returns false if env vars are missing (fail-closed).
+    - `middleware.ts` — `requireAdminAuth` Express middleware with manual cookie parsing (no `cookie-parser` dep, saved a package). Parses `plansync_admin_token` cookie, verifies the HMAC, returns 401 with a clear code (`portal_not_configured` / `no_token` / `invalid_token`) on failure. Also exports `buildAdminCookieHeader` / `buildClearAdminCookieHeader` for Set-Cookie: `HttpOnly; Secure; SameSite=None` flags.
+    - `config.ts` — Redis-backed runtime config with env fallback. 4 keys: `admin:config:model`, `admin:config:maxTokens`, `admin:config:maxRetries`, `admin:config:disabledTools`. Precedence on read: Redis override → env var → hardcoded default. Setters write with no TTL (sticky). `setDisabledTools` silently filters out `request_user_approval` — the only blocking tool, disabling it would break the UX. `getAdminConfigSnapshot` returns the full state for the dashboard with `hasOverride` flags.
+    - `usage.ts` — Token usage + cost estimation. Called from `loop.ts` after every Anthropic response (fire-and-forget). Persists per-session (`session:{id}:usage`) + daily aggregate (`admin:usage:daily:{date}` with per-model breakdown). Pricing table covers Haiku/Sonnet/Opus 4.5 at approximate Anthropic public pricing. Prompt cache reads ~10% of input cost, writes ~125%. `estimateCostUsd` is the pure function for cost computation. Dashboard labels cost as "estimated" since pricing drifts.
+    - `stats.ts` — Aggregate dashboard stats computed by SCANning session meta keys, walking event logs, classifying each session's outcome (derivedStatus = successful/errored/in_progress/abandoned). Returns `computeDashboardStats()` for the 6 stat cards + `listRecentSessions()` with date range + status + search filters. O(n) SCAN is fine for current workload; post-submission optimization would be a sorted set by createdAt.
+    - `tools-catalog.ts` — Display metadata for all 22 tools organized into 7 categories. Each entry has `name`, `displayName`, `category`, `icon` (Material Symbols), `description`, `canDisable`, and `isServerTool`. `request_user_approval` is marked `canDisable: false` — the admin UI renders it with a lock icon and no toggle. `web_search` is marked `isServerTool: true`.
+
+    **Backend (`agent/src/agent/loop.ts`):**
+    - Removed the boot-time `ANTHROPIC_MODEL` env var check — the loop now fails fast on the FIRST TURN with a clear error if neither Redis nor the env var has a value. This lets Railway boot cleanly and the admin can come in and set the model via the dashboard.
+    - At the start of every turn, reads runtime config FRESH via `getEffectiveModel()` / `getEffectiveMaxTokens()` / `getEffectiveMaxRetries()` / `getDisabledTools()`. Redis precedence over env. This means admin changes apply on the NEXT turn of any running session (not mid-stream).
+    - Builds `enabledTools` by filtering `TOOL_SCHEMAS` against the disabled set, then applies `cache_control` to the last enabled tool. Admin can disable any tool and the next turn immediately honors it.
+    - After each successful `stream.finalMessage()`, calls `recordUsage(sessionId, model, final.usage)` fire-and-forget using the CURRENT model (so per-model stats stay correct even if the admin changes the model mid-run).
+
+    **Backend (`agent/src/index.ts`):**
+    - 8 new routes under `/admin/*`: `POST /admin/login`, `POST /admin/logout`, `GET /admin/me`, `GET /admin/dashboard` (with `dateRange`/`status`/`search`/`limit` query params), `GET /admin/tools`, `GET /admin/config`, `POST /admin/config` (partial update with null-to-clear semantics), `POST /admin/config/disabled-tools`.
+    - All protected routes use `requireAdminAuth`. `/admin/login` has an inline 503 check for unconfigured portal.
+    - Bootup logging now includes admin portal status.
+
+    **Frontend (`frontend/lib/admin-client.ts`):**
+    - Typed fetch helpers for all 8 admin endpoints. Every request carries `credentials: 'include'` so the browser attaches the HttpOnly cookie on cross-origin calls. Display helpers: `formatUsdCost`, `formatTokens`, `formatRelativeTime`.
+
+    **Frontend (`frontend/app/admin/login/page.tsx`):**
+    - Standalone login form with Plansync brand header ("Admin Console" label). Username + password fields + Sign In button. On mount, calls `/admin/me` — if already authenticated, auto-redirects to `/admin`. Shows specific error messages for `portal_not_configured` vs invalid credentials.
+
+    **Frontend (`frontend/app/admin/page.tsx`):**
+    - Single-page dashboard. Sections: top bar (brand + sign out), 6 stat cards (runs today, success rate, active now, errors today, est. cost, avg cost/run), runtime config card (model dropdown + max tokens + retries with save button + hasOverride indicators), tools grid (7 category cards containing 22 tool cards with toggle functionality and lock icon on `request_user_approval`), recent sessions table (date range / status / search filters, 8 columns including per-session cost), daily usage by model card. Sub-components (`SectionHeader`, `StatCard`, `StatusBadge`, `SegmentedControl`) defined inline at the bottom of the page for fast iteration.
+    - Matches the Plansync visual language (purple gradient, rounded-3xl cards) but with denser spacing since it's a dashboard.
+    - Verified: `npm run build` clean. Two new routes: `/admin` (6.93 KB) and `/admin/login` (3.02 KB).
+
+    **Env vars required on Railway (to be set by user during verification):**
+    - `ADMIN_USERNAME` — operator picks
+    - `ADMIN_PASSWORD` — generate with `openssl rand -base64 24`
+
+    **What this branch does NOT change on main** (until merge): production Railway and Vercel are untouched. When we merge, the `loop.ts` changes (reading Redis config) apply to every session — but since Redis has no overrides by default, existing behavior is preserved exactly.
 
 ### Phase 9: Refresh-safe sessions via Redis event log replay (Option 1)
 
@@ -240,34 +352,60 @@ These are real features we discussed and decided to defer, not bugs:
 
 | Service | Status | URL |
 |---|---|---|
-| Railway backend | **LIVE v0.1.12**, ANTHROPIC_MODEL set to haiku, SSE heartbeat enabled | https://plansync-production.up.railway.app |
-| Vercel frontend | **LIVE** at `e8981d9` with scaled UI + split layout + ErrorBoundary + hardened PlanReviewTree | https://plansync-tau.vercel.app |
-| GitHub repo | Up to date at `56e353f` | https://github.com/inba-2299/Plansync |
+| Railway backend (prod) | **LIVE v0.1.13** on `bf53e84`, ANTHROPIC_MODEL=haiku, SSE heartbeat + refresh-safe events + system prompt hardened | https://plansync-production.up.railway.app |
+| Railway backend (preview) | **Being set up by user** — will watch the `admin-portal` branch, shared Upstash Redis, separate ADMIN_USERNAME/ADMIN_PASSWORD env vars | `plansync-preview-xxxx.up.railway.app` (TBD) |
+| Vercel frontend (prod) | **LIVE** at `bf53e84` with 13px base font + split layout + ErrorBoundary + refresh-safe hydration + prose-asking hardening | https://plansync-tau.vercel.app |
+| Vercel frontend (preview) | Auto-deployed for `admin-portal` branch. User may either override `NEXT_PUBLIC_AGENT_URL` in Vercel preview env vars OR run the frontend locally pointed at the preview Railway URL. | `plansync-tau-git-admin-portal-xxxx.vercel.app` (TBD) |
+| GitHub repo | `main` at `bf53e84`, `admin-portal` at `e140986` | https://github.com/inba-2299/Plansync |
+| Custom App in Rocketlane | **INSTALLED AND VERIFIED WORKING** in `inbarajb.rocketlane.com` — iframe wrapper loads live Vercel frontend via `?embed=1` | https://inbarajb.rocketlane.com |
 | Rocketlane workspace | Inbarajb's Enterprise trial, multiple test projects exist | https://inbarajb.rocketlane.com |
-| Upstash Redis | Connected and healthy (session TTL 7d) | — |
-| Anthropic API | Connected, Sonnet 4.5 (will flip to Haiku) | — |
+| Upstash Redis | Connected and healthy (session TTL 7d, events TTL 7d, admin usage daily TTL 30d) | — |
+| Anthropic API | Connected, currently Haiku 4.5 | — |
 
-**Railway env vars** (all set):
+**Railway env vars on the prod service** (all set):
 - `ANTHROPIC_API_KEY`
-- `ANTHROPIC_MODEL` — Sonnet 4.5 currently, Inbaraj will flip to Haiku 4.5
+- `ANTHROPIC_MODEL=claude-haiku-4-5`
 - `UPSTASH_REDIS_REST_URL`
 - `UPSTASH_REDIS_REST_TOKEN`
 - `ENCRYPTION_KEY`
-- `ALLOWED_ORIGIN` = `https://plansync-tau.vercel.app,http://localhost:3000,https://*.rocketlane.com`
+- `ALLOWED_ORIGIN=https://plansync-tau.vercel.app,http://localhost:3000,https://*.rocketlane.com`
+
+**Railway env vars on the PREVIEW service** (user to configure before testing admin portal):
+- All of the above (same values, same Redis)
+- **PLUS** `ADMIN_USERNAME` (operator picks)
+- **PLUS** `ADMIN_PASSWORD` (generate via `openssl rand -base64 24`)
 
 ## Environment state (local)
 
 | Thing | Status |
 |---|---|
-| `/Users/inbaraj/Downloads/plansync/` | Git repo synced to `origin/main` at `56e353f` |
-| `agent/.env` | Must include `ANTHROPIC_MODEL` (user was reminded to set it locally) |
-| `frontend/.env.local` | Pointing at Railway URL |
+| `/Users/inbaraj/Downloads/plansync/` | Git repo checked out on `admin-portal` branch at `e140986` (ahead of `main` by 1 commit). `main` at `bf53e84`. |
+| `agent/.env` | Must include `ANTHROPIC_API_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `ENCRYPTION_KEY`. `ANTHROPIC_MODEL` is optional after Commit 2h (loop reads from Redis first, falls back to env). For local admin portal testing, also set `ADMIN_USERNAME` + `ADMIN_PASSWORD`. |
+| `frontend/.env.local` | Pointing at Railway URL via `NEXT_PUBLIC_AGENT_URL`. For admin portal local testing, override via `NEXT_PUBLIC_AGENT_URL=<preview Railway URL> npm run dev`. |
 | `agent/node_modules`, `frontend/node_modules` | Installed |
-| Frontend `npm run build` | Clean |
-| Agent `npm run build` | Clean |
+| `@rocketlane/rli` | Installed globally for Custom App builds (`rli --version` should return `1.0.0`) |
+| Frontend `npm run build` | Clean (including new `/admin` and `/admin/login` routes) |
+| Agent `npx tsc --noEmit` | Clean (including new `admin/*` modules and `loop.ts` changes) |
+| `/tmp/inspect-sessions.mjs` | Unstable scratch script for Redis session inspection. Not committed. Post-submission: port to `agent/scripts/inspect-sessions.ts`. |
+| `/tmp/diff-sessions.mjs` | Same as above — pairs two sessionIds and diffs their tool call sequences. |
+| `/tmp/rli-scratch/plansync-rl/` | Temporary RLI scaffold used to prototype the Custom App v2 build. Can be deleted; the final files live in `custom-app/`. |
 
 ## Session 4 commit history (most recent first)
 
+**Admin portal branch (not yet merged):**
+- `e140986` — Admin portal: auth + dashboard + runtime config + tools grid + usage tracking (on `admin-portal`)
+
+**Main branch:**
+- `bf53e84` — Commit 2h: harden system prompt against prose-asking + UI zoom to 13px
+- `becaf10` — Custom App v2: rebuild with @rocketlane/rli (proper `rli-dist/deploy.json` format)
+- `3014b4d` — Custom App v1: Rocketlane .zip bundle + embed mode (BROKEN — `manifest.json` approach rejected; kept in history, superseded by v2)
+- `537fa3e` — Commit 2c: UX polish + defensive guards (FileUploadCard title, ApprovalPrompt preamble, journey_update normalize, JourneyStepper status guard, file size check, stray PNG)
+- `7b2198c` — Docs: capture Commit 2g + 2f details
+- `96f9c59` — Fix: mark replayed approvals as answered on hydration
+- `a9974c5` — Commit 2g: refresh-safe sessions via Redis event log replay
+- `8eda1a3` — Docs: capture Commit 2f crash fix + ErrorBoundary lessons
+- `e8981d9` — Fix: application crash on Haiku-generated plans (missing dependsOn)
+- `fa4bfa4` — Commit 2a.7: SSE heartbeat every 15s — fixes silent hang on long Anthropic calls
 - `56e353f` — Commit 2a.6: UI scale 14px + Rocketlane URL rule + execution plan final-state rule (v0.1.11)
 - `8834db5` — Commit 2e: execute_plan_creation batch tool (v0.1.10) ← **the big one**
 - `fed1ace` — Commit 2a.5: Interactive metadata gathering rule (v0.1.9)
@@ -285,11 +423,13 @@ Plus doc commits and smaller touches in between.
 
 ## Known issues / risks for submission
 
-- **Haiku test unverified at time of writing**. Inbaraj is about to flip the env var and test. If Haiku fumbles the interactive metadata flow (which would be a capability regression), fallback is one env var flip back to Sonnet — zero code change.
-- **Custom App iframe sandbox untested**. Rocketlane CSP could block the iframe. Plan B is a self-contained HTML bundle with the app inlined (bigger, but avoids the iframe).
-- **BRD format decision pending** (Spaces page vs PDF vs GitHub markdown). 
-- **No real session hydration**. Refresh = new session. Inbaraj explicitly deferred this, but Janani may notice. Worth mentioning in the BRD as "documented post-submission work".
-- **Model env var must be set on Railway**. Already set. If removed, the agent fails at first request with a clear error. Not a silent failure.
+- **Admin portal unverified end-to-end**. Built + pushed on the `admin-portal` branch (commit `e140986`). User is setting up a separate Railway preview deployment to test. If the end-to-end flow doesn't work inside a Vercel preview calling the preview Railway backend, we iterate on the branch without touching main. If it works, we merge `admin-portal` → `main` and both Railway + Vercel prod pick up the admin routes.
+- **BRD document not yet committed**. `BRD.md` is drafted and sitting in the working tree uncommitted. Needs an update to cover Commit 2h system prompt hardening, Custom App v2 rebuild, and the admin portal section (with honest notes about it being on a branch at the time of writing). Then commit.
+- **Haiku fully verified** end-to-end since the system prompt hardening in Commit 2h landed. The prose-asking bug is fixed. The journey stepper bug is fixed.
+- **Custom App iframe sandbox VERIFIED** — not a risk anymore. Rocketlane's Custom App runtime allows loading a cross-origin iframe to `vercel.app`. Custom App is installed and working inside `inbarajb.rocketlane.com`.
+- **Refresh-safe sessions verified** via Commit 2g. No remaining refresh concerns.
+- **Model env var is no longer required at boot** after Commit 2h changes. If neither Redis nor the env var has a model set, the first turn fails with a clear error — but Railway still boots, allowing the admin to come in via the portal and set the model live.
+- **Pricing table in `admin/usage.ts` is approximate**. Anthropic public pricing drifts — the dashboard labels cost as "estimated" and recommends checking the Anthropic console for exact billing.
 
 ## If the next session starts from a cold start
 

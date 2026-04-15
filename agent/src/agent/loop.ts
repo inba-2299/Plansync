@@ -5,6 +5,13 @@ import { RocketlaneClient } from '../rocketlane/client';
 import { decrypt } from '../lib/crypto';
 import { SYSTEM_PROMPT } from './system-prompt';
 import { dispatch, TOOL_SCHEMAS } from '../tools';
+import {
+  getEffectiveModel,
+  getEffectiveMaxTokens,
+  getEffectiveMaxRetries,
+  getDisabledTools,
+} from '../admin/config';
+import { recordUsage } from '../admin/usage';
 
 /**
  * runAgentLoop — the real ReAct loop.
@@ -34,14 +41,17 @@ import { dispatch, TOOL_SCHEMAS } from '../tools';
  */
 
 /**
- * Model is configured exclusively via the ANTHROPIC_MODEL env var on
- * Railway. There is NO hardcoded fallback — if the env var isn't set,
- * the loop fails fast with a clear error explaining which values to use.
- * This keeps model choice outside the codebase so switching between
- * Sonnet / Haiku / Opus is a Railway variable edit + restart, not a
- * commit + deploy.
+ * Runtime config resolution (model, max_tokens, max retries, disabled tools)
+ * is delegated to `admin/config.ts`. Precedence on each read:
+ *   1. Redis key `admin:config:*` (set by the admin portal at runtime)
+ *   2. Environment variable on Railway
+ *   3. Hardcoded default constant below
  *
- * Recommended values:
+ * This lets the admin change the model, max_tokens, etc. without a
+ * Railway redeploy — the change takes effect on the NEXT turn (of any
+ * running session), not mid-stream.
+ *
+ * Recommended model values:
  *   - claude-haiku-4-5  — ~4x cheaper than Sonnet, good for tool-calling
  *   - claude-sonnet-4-5 — higher capability, use if Haiku struggles
  *   - claude-opus-4-5   — highest capability, expensive
@@ -49,30 +59,13 @@ import { dispatch, TOOL_SCHEMAS } from '../tools';
 const MAX_TURNS = 40;
 
 /**
- * Ceiling on output tokens per single assistant turn. Hardcoded (not an
- * env var) because there's effectively one right answer: high enough to
- * never hit it. We're only billed for tokens ACTUALLY generated, so a
- * high ceiling has zero cost impact unless output is actually that long.
- *
- * 16384 was chosen after 4096 started failing on plan-generation turns
- * where the agent emits a full plan JSON (42 items × ~40 tokens each =
- * ~1700 tokens) plus reasoning plus tool call input overhead. 4× that
- * buys headroom for edge cases while still being well under the
- * per-model caps (Haiku 4.5 / Sonnet 4.5 both support 64K output).
- * If we ever see a max_tokens error at this limit, the right fix is
- * probably a system prompt edit (make the agent more concise) rather
- * than raising the ceiling further.
+ * Legacy constant — kept only as a human-readable reference for the
+ * default that `getEffectiveMaxTokens()` falls back to. The actual
+ * value used per turn is read from Redis/env at turn start.
  */
-const MAX_TOKENS = 16384;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const DEFAULT_MAX_TOKENS_DOC = 16384;
 
-/**
- * 429 retry policy. Anthropic returns Retry-After in the response headers
- * when we hit the per-minute TPM/RPM limits. We retry up to 3 times with
- * that delay (clamped to 60s max so the user doesn't sit frozen forever).
- * Between retries we emit a `rate_limited` SSE event so the frontend can
- * render a visible "retrying in Xs" card.
- */
-const MAX_RATE_LIMIT_RETRIES = 3;
 const DEFAULT_RETRY_AFTER_SECONDS = 20;
 const MAX_RETRY_AFTER_SECONDS = 60;
 
@@ -96,21 +89,36 @@ export async function runAgentLoop(
     return { outcome: 'error', error: 'ANTHROPIC_API_KEY not set' };
   }
 
-  const model = process.env.ANTHROPIC_MODEL;
-  if (!model) {
-    emit({
-      type: 'error',
-      message:
-        'ANTHROPIC_MODEL env var is not set on the agent backend. Set it on Railway to one of: claude-haiku-4-5 (cheap, recommended), claude-sonnet-4-5 (higher capability), or claude-opus-4-5 (highest capability, expensive), then retry.',
-      kind: 'generic',
-    });
-    return { outcome: 'error', error: 'ANTHROPIC_MODEL not set' };
-  }
+  // Model is resolved PER TURN inside the loop via getEffectiveModel()
+  // (Redis override → env var → hardcoded). No boot-time check here —
+  // if neither Redis nor the env var has a model, the first turn will
+  // emit a clear error and the loop will return early.
 
   const anthropic = new Anthropic({ apiKey });
 
   while (session.meta.turnCount < MAX_TURNS) {
     session.meta.turnCount++;
+
+    // Resolve runtime config FRESH at the start of each turn so that admin
+    // changes made mid-run take effect on the next turn. Precedence:
+    // Redis override → env var → hardcoded default.
+    let model: string;
+    try {
+      model = await getEffectiveModel();
+    } catch (err) {
+      emit({
+        type: 'error',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Failed to resolve model: set admin:config:model in Redis or ANTHROPIC_MODEL env var',
+        kind: 'generic',
+      });
+      return { outcome: 'error', error: 'model_not_configured' };
+    }
+    const maxTokens = await getEffectiveMaxTokens();
+    const maxRateLimitRetries = await getEffectiveMaxRetries();
+    const disabledToolNames = new Set(await getDisabledTools());
 
     // Lazy RL client — one per turn, reused across all tool calls this turn
     let rlClient: RocketlaneClient | null = null;
@@ -158,8 +166,17 @@ export async function runAgentLoop(
     // know about cache_control on tools — the API supports it. Rebuilt
     // every turn so cache_control always lands on the same anchor (last
     // element) regardless of how TOOL_SCHEMAS is mutated.
-    const toolsWithCache = TOOL_SCHEMAS.map((t, i) =>
-      i === TOOL_SCHEMAS.length - 1
+    // Filter out admin-disabled tools BEFORE applying the cache marker.
+    // request_user_approval is protected at the config setter level so
+    // it can never land in the disabled set, but we double-check here.
+    const enabledTools = TOOL_SCHEMAS.filter((t) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const toolName = (t as any).name ?? '';
+      if (toolName === 'request_user_approval') return true;
+      return !disabledToolNames.has(toolName);
+    });
+    const toolsWithCache = enabledTools.map((t, i) =>
+      i === enabledTools.length - 1
         ? { ...t, cache_control: { type: 'ephemeral' as const } }
         : t
     );
@@ -168,7 +185,7 @@ export async function runAgentLoop(
       try {
         const stream = anthropic.messages.stream({
           model,
-          max_tokens: MAX_TOKENS,
+          max_tokens: maxTokens,
           // Cast to any because the SDK's TextBlockParam type in this version
           // doesn't know about cache_control yet — but the API supports it.
           // Ephemeral cache cuts input tokens ~70% on multi-turn runs.
@@ -199,13 +216,29 @@ export async function runAgentLoop(
           content: final.content as any,
         };
         streamSucceeded = true;
+
+        // Record token usage for the admin dashboard (fire-and-forget).
+        // Uses the current `model` variable so per-model aggregation
+        // works correctly even if the admin changed the model mid-run.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const usage = (final as any).usage;
+        if (usage) {
+          void recordUsage(session.meta.sessionId, model, {
+            input_tokens: usage.input_tokens,
+            output_tokens: usage.output_tokens,
+            cache_creation_input_tokens: usage.cache_creation_input_tokens,
+            cache_read_input_tokens: usage.cache_read_input_tokens,
+          });
+        }
       } catch (err) {
         const classified = classifyAnthropicError(err);
 
-        // Rate limit — retry up to MAX_RATE_LIMIT_RETRIES times with
+        // Rate limit — retry up to `maxRateLimitRetries` times with
         // Retry-After backoff. Emit a visible rate_limited event between
-        // attempts so the frontend can show a countdown.
-        if (classified.kind === 'rate_limit' && rateLimitAttempt < MAX_RATE_LIMIT_RETRIES) {
+        // attempts so the frontend can show a countdown. `maxRateLimitRetries`
+        // is resolved per-turn from Redis/env so the admin can change the
+        // cap at runtime.
+        if (classified.kind === 'rate_limit' && rateLimitAttempt < maxRateLimitRetries) {
           rateLimitAttempt++;
           const waitSeconds = Math.min(
             classified.retryAfterSeconds ?? DEFAULT_RETRY_AFTER_SECONDS,
@@ -215,7 +248,7 @@ export async function runAgentLoop(
             type: 'rate_limited',
             retryInSeconds: waitSeconds,
             attempt: rateLimitAttempt,
-            maxAttempts: MAX_RATE_LIMIT_RETRIES,
+            maxAttempts: maxRateLimitRetries,
             message: classified.message,
           });
           await sleep(waitSeconds * 1000);
