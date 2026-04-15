@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!--
+    Plansync icon — purple gradient lightning bolt.
+    Matches the in-app brand mark used in the header (Material Symbols
+    `bolt` glyph on a gradient background) so users see continuity
+    between the Custom App tile in Rocketlane and the running app.
+  -->
+  <defs>
+    <linearGradient id="plansync-bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7c3aed" />
+      <stop offset="100%" stop-color="#a855f7" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#plansync-bg)" />
+  <path
+    d="M36 8 L18 36 L30 36 L26 56 L46 26 L34 26 L36 8 Z"
+    fill="white"
+    stroke="white"
+    stroke-width="0.5"
+    stroke-linejoin="round"
+  />
+</svg>

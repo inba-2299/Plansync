@@ -199,11 +199,37 @@ function loadOrCreateSessionId(): string {
   return fresh;
 }
 
+/**
+ * Detect whether we're running inside the Rocketlane Custom App iframe
+ * shell (which loads us with `?embed=1`). When embedded, we hide the
+ * Plansync header bar — Rocketlane provides its own chrome and showing
+ * a duplicate brand row above the agent workspace is visually noisy.
+ *
+ * Read once on first render via the `useState` initializer pattern, so
+ * subsequent re-renders don't re-parse the URL or check for a missing
+ * `window`. SSR-safe (returns false during server render).
+ */
+function detectEmbedMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('embed') === '1';
+  } catch {
+    return false;
+  }
+}
+
 export function Chat() {
   // Stable session id — persisted to localStorage so a refresh returns
   // to the SAME session (with full hydration from the backend event log)
   // instead of orphaning the old session and starting a fresh one.
   const [sessionId] = useState(loadOrCreateSessionId);
+
+  // Embed mode — true if the page was loaded with `?embed=1`. Used by
+  // the Rocketlane Custom App iframe shell to indicate "hide the
+  // Plansync header bar; Rocketlane is providing its own chrome".
+  // Read once at first render and stays stable for the page lifetime.
+  const [embedMode] = useState(detectEmbedMode);
 
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [journey, setJourney] = useState<JourneyStep[]>([]);
@@ -1084,46 +1110,52 @@ export function Chat() {
 
   return (
     <div className="h-screen bg-surface text-on-surface font-body flex flex-col overflow-hidden">
-      {/* ---------- Header (sticky top, full width) ---------- */}
-      <header className="flex-shrink-0 backdrop-blur-md bg-surface/80 border-b border-outline-variant/30">
-        <div className="max-w-screen-2xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-card-sm">
-              <span className="material-symbols-outlined filled text-white text-base">
-                bolt
+      {/* ---------- Header (sticky top, full width) ----------
+           Hidden in embed mode — Rocketlane's Custom App iframe provides
+           its own chrome, so showing the Plansync brand row inside the
+           iframe creates a duplicate header. The "New session" button
+           and "Connected" pill move into a slim toolbar above the journey
+           stepper instead. */}
+      {!embedMode && (
+        <header className="flex-shrink-0 backdrop-blur-md bg-surface/80 border-b border-outline-variant/30">
+          <div className="max-w-screen-2xl mx-auto px-6 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-card-sm">
+                <span className="material-symbols-outlined filled text-white text-base">
+                  bolt
+                </span>
+              </div>
+              <span className="font-headline font-extrabold text-xl text-on-surface tracking-tight">
+                Plansync
+              </span>
+              <span className="hidden sm:inline-block ml-2 text-xs font-label font-semibold uppercase tracking-widest text-on-surface-variant">
+                Rocketlane Project Plan Agent
               </span>
             </div>
-            <span className="font-headline font-extrabold text-xl text-on-surface tracking-tight">
-              Plansync
-            </span>
-            <span className="hidden sm:inline-block ml-2 text-xs font-label font-semibold uppercase tracking-widest text-on-surface-variant">
-              Rocketlane Project Plan Agent
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleNewSession}
-              disabled={streaming}
-              title="Clear the current conversation and start a new session"
-              className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all',
-                'bg-surface-container-low/70 border border-outline-variant/40 text-on-surface-variant',
-                'hover:border-primary/40 hover:text-primary hover:bg-primary/5',
-                'disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-outline-variant/40 disabled:hover:text-on-surface-variant disabled:hover:bg-surface-container-low/70'
-              )}
-            >
-              <span className="material-symbols-outlined text-sm">add_circle</span>
-              <span>New session</span>
-            </button>
-            <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-              <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-              <span className="font-medium">Connected</span>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleNewSession}
+                disabled={streaming}
+                title="Clear the current conversation and start a new session"
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all',
+                  'bg-surface-container-low/70 border border-outline-variant/40 text-on-surface-variant',
+                  'hover:border-primary/40 hover:text-primary hover:bg-primary/5',
+                  'disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-outline-variant/40 disabled:hover:text-on-surface-variant disabled:hover:bg-surface-container-low/70'
+                )}
+              >
+                <span className="material-symbols-outlined text-sm">add_circle</span>
+                <span>New session</span>
+              </button>
+              <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+                <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                <span className="font-medium">Connected</span>
+              </div>
             </div>
           </div>
-        </div>
-        {journey.length > 0 && <JourneyStepper steps={journey} />}
-        {hydrationMode === 'mid-stream' && (
+          {journey.length > 0 && <JourneyStepper steps={journey} />}
+          {hydrationMode === 'mid-stream' && (
           <div className="border-t border-warning/20 bg-warning/5">
             <div className="max-w-screen-2xl mx-auto px-6 py-2 flex items-center gap-3">
               <span className="material-symbols-outlined text-warning text-base">
@@ -1147,7 +1179,65 @@ export function Chat() {
             </div>
           </div>
         )}
-      </header>
+        </header>
+      )}
+
+      {/* ---------- Embed-mode toolbar ----------
+           Shown ONLY in embed mode in place of the full header. Compact
+           one-line bar with the journey stepper, "New session" button,
+           and "Connected" pill. The Plansync brand mark is omitted
+           because Rocketlane's iframe chrome already shows the app
+           name. The mid-stream banner still renders below if needed. */}
+      {embedMode && (
+        <div className="flex-shrink-0 backdrop-blur-md bg-surface/80 border-b border-outline-variant/30">
+          <div className="max-w-screen-2xl mx-auto px-4 py-2 flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={handleNewSession}
+              disabled={streaming}
+              title="Clear the current conversation and start a new session"
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all',
+                'bg-surface-container-low/70 border border-outline-variant/40 text-on-surface-variant',
+                'hover:border-primary/40 hover:text-primary hover:bg-primary/5',
+                'disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-outline-variant/40 disabled:hover:text-on-surface-variant disabled:hover:bg-surface-container-low/70'
+              )}
+            >
+              <span className="material-symbols-outlined text-sm">add_circle</span>
+              <span>New session</span>
+            </button>
+            <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+              <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
+              <span className="font-medium">Connected</span>
+            </div>
+          </div>
+          {journey.length > 0 && <JourneyStepper steps={journey} />}
+          {hydrationMode === 'mid-stream' && (
+            <div className="border-t border-warning/20 bg-warning/5">
+              <div className="max-w-screen-2xl mx-auto px-4 py-2 flex items-center gap-3">
+                <span className="material-symbols-outlined text-warning text-base">
+                  sync_problem
+                </span>
+                <div className="flex-1 min-w-0 text-xs text-on-surface-variant">
+                  <span className="font-semibold text-warning">
+                    Reconnected mid-response.
+                  </span>{' '}
+                  The agent may have kept working after the refresh — click to
+                  pull any new updates.
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCheckForUpdates}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-warning/10 text-warning border border-warning/30 hover:bg-warning/20 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-sm">refresh</span>
+                  Check for updates
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ---------- Main split area ---------- */}
       {/* min-h-0 is critical so children with overflow-y-auto actually scroll
