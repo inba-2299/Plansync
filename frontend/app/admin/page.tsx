@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   fetchDashboard,
   fetchTools,
+  fetchRecentSessions,
   updateAdminConfig,
   updateDisabledTools,
   adminLogout,
@@ -14,7 +15,7 @@ import {
 } from '@/lib/admin-client';
 import type {
   DashboardPayload,
-  DashboardQuery,
+  RecentSessionRow,
   StatusFilter,
   DateRangeFilter,
   ToolCatalogEntry,
@@ -23,30 +24,45 @@ import type {
 import { cn } from '@/lib/cn';
 
 /**
- * Plansync Admin — Dashboard
+ * Plansync Admin — Tabbed Dashboard
  *
- * Single-page operator console. Reads /admin/dashboard + /admin/tools
- * in parallel on mount, renders:
+ * Rewritten from the v1 single-page implementation after it became
+ * obvious that loading everything at once was ~30 seconds of latency
+ * (see MEMORY.md post-v1 fix for the full diagnosis). The current
+ * design is a four-tab layout where:
  *
- *   1. Top bar: brand + signed-in status + logout button
- *   2. 6 stat cards (runs today, success rate, active, errors, cost, avg cost)
- *   3. Runtime config card (model dropdown + max_tokens + max_retries)
- *   4. Tools grid grouped by 7 categories, 22 cards, toggle-enabled
- *   5. Recent sessions table with date range + status filters + search
+ *   • Observability (default) — stat cards + usage by model.
+ *     Loads from the fast /admin/dashboard endpoint (pre-computed
+ *     Redis counters, ~200ms).
+ *   • Runtime Config — model / max_tokens / retry cap editor.
+ *     Uses the dashboard payload's config snapshot (already loaded
+ *     with the Observability tab, so tab switching is instant).
+ *   • Agent Tools — 7 categories × 22 tools with toggle.
+ *     Loaded on first click via /admin/tools (~50ms; static catalog).
+ *   • Recent Sessions — filterable table.
+ *     Lazy-loaded via /admin/sessions on first click AND on every
+ *     filter change. Uses the new sorted set for fast reads.
  *
- * On 401 from any endpoint → redirect to /admin/login.
+ * Per-tab data lives in local state, fetched on-demand. Tab switching
+ * is instant after the initial fetch (no loading state re-renders the
+ * entire page).
  */
+
+type TabId = 'observability' | 'config' | 'tools' | 'sessions';
 
 const MODEL_OPTIONS = [
   { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 (cheap, fast)' },
   { value: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5 (balanced)' },
-  { value: 'claude-opus-4-5', label: 'Claude Opus 4.5 (expensive, highest capability)' },
+  {
+    value: 'claude-opus-4-5',
+    label: 'Claude Opus 4.5 (expensive, highest capability)',
+  },
 ];
 
 export default function AdminDashboardPage() {
   const router = useRouter();
 
-  // ---------- State ----------
+  // ---------- Global state (loaded on mount) ----------
   const [dashboard, setDashboard] = useState<DashboardPayload | null>(null);
   const [toolsPayload, setToolsPayload] = useState<{
     categories: ToolCategoryMeta[];
@@ -56,25 +72,33 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Filters for the recent sessions table
+  // ---------- Tab state ----------
+  const [activeTab, setActiveTab] = useState<TabId>('observability');
+
+  // ---------- Sessions tab state (lazy-loaded) ----------
+  const [sessions, setSessions] = useState<RecentSessionRow[] | null>(null);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
   const [dateRange, setDateRange] = useState<DateRangeFilter>('7d');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [search, setSearch] = useState('');
 
-  // Config form state (pending edits)
+  // ---------- Config form state (pending edits) ----------
   const [pendingModel, setPendingModel] = useState<string>('');
   const [pendingMaxTokens, setPendingMaxTokens] = useState<string>('');
   const [pendingMaxRetries, setPendingMaxRetries] = useState<string>('');
   const [savingConfig, setSavingConfig] = useState(false);
 
-  // Tool toggle state (pending disabled set)
+  // ---------- Tool toggle state ----------
   const [pendingDisabled, setPendingDisabled] = useState<Set<string>>(new Set());
   const [savingTools, setSavingTools] = useState(false);
 
-  // ---------- Data loading ----------
+  // ============================================================================
+  // Data loaders
+  // ============================================================================
 
-  const loadDashboard = useCallback(async (query: DashboardQuery) => {
-    const res = await fetchDashboard(query);
+  /** Load the fast dashboard payload (stats + config + daily usage). */
+  const loadDashboard = useCallback(async () => {
+    const res = await fetchDashboard();
     if (!res.ok) {
       if (res.status === 401) {
         router.replace('/admin/login');
@@ -85,7 +109,6 @@ export default function AdminDashboardPage() {
     }
     if (res.data) {
       setDashboard(res.data);
-      // Seed config form with effective values
       setPendingModel(res.data.config.model.effective);
       setPendingMaxTokens(String(res.data.config.maxTokens.effective));
       setPendingMaxRetries(String(res.data.config.maxRetries.effective));
@@ -93,6 +116,7 @@ export default function AdminDashboardPage() {
     }
   }, [router]);
 
+  /** Load the tool catalog (static) + current disabled set. */
   const loadTools = useCallback(async () => {
     const res = await fetchTools();
     if (!res.ok) {
@@ -105,15 +129,46 @@ export default function AdminDashboardPage() {
     if (res.data) setToolsPayload(res.data);
   }, [router]);
 
-  // Initial load
+  /**
+   * Load recent sessions with the current filters. Triggered on:
+   *   1. First click on the Sessions tab
+   *   2. Any filter change while on the Sessions tab
+   */
+  const loadSessions = useCallback(async () => {
+    setSessionsLoading(true);
+    try {
+      const res = await fetchRecentSessions({
+        dateRange,
+        status: statusFilter,
+        search: search.trim(),
+        limit: 50,
+      });
+      if (!res.ok) {
+        if (res.status === 401) {
+          router.replace('/admin/login');
+          return;
+        }
+        setError(res.error ?? 'Failed to load sessions');
+        return;
+      }
+      if (res.data) {
+        setSessions(res.data.sessions);
+      }
+    } finally {
+      setSessionsLoading(false);
+    }
+  }, [dateRange, statusFilter, search, router]);
+
+  // ============================================================================
+  // Lifecycle
+  // ============================================================================
+
+  // Initial load — fast path only (dashboard + tools). No session fetch.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      await Promise.all([
-        loadDashboard({ dateRange: '7d', status: 'all' }),
-        loadTools(),
-      ]);
+      await Promise.all([loadDashboard(), loadTools()]);
       if (!cancelled) setLoading(false);
     })();
     return () => {
@@ -121,28 +176,34 @@ export default function AdminDashboardPage() {
     };
   }, [loadDashboard, loadTools]);
 
-  // Reload sessions when filters change
+  // Sessions tab: lazy-load on first click.
   useEffect(() => {
-    if (!dashboard) return;
-    loadDashboard({
-      dateRange,
-      status: statusFilter,
-      search: search.trim(),
-    });
+    if (activeTab === 'sessions' && sessions === null && !sessionsLoading) {
+      loadSessions();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  // Sessions tab: refetch when filters change (only if the tab is open).
+  useEffect(() => {
+    if (activeTab !== 'sessions') return;
+    loadSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateRange, statusFilter]);
 
-  // Debounced search
+  // Debounced search input → refetch
   useEffect(() => {
-    if (!dashboard) return;
+    if (activeTab !== 'sessions') return;
     const handle = setTimeout(() => {
-      loadDashboard({ dateRange, status: statusFilter, search: search.trim() });
+      loadSessions();
     }, 400);
     return () => clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
-  // ---------- Handlers ----------
+  // ============================================================================
+  // Handlers
+  // ============================================================================
 
   const handleLogout = useCallback(async () => {
     await adminLogout();
@@ -162,11 +223,19 @@ export default function AdminDashboardPage() {
         patch.model = pendingModel;
       }
       const mt = Number(pendingMaxTokens);
-      if (Number.isFinite(mt) && mt > 0 && mt !== dashboard?.config.maxTokens.effective) {
+      if (
+        Number.isFinite(mt) &&
+        mt > 0 &&
+        mt !== dashboard?.config.maxTokens.effective
+      ) {
         patch.maxTokens = mt;
       }
       const mr = Number(pendingMaxRetries);
-      if (Number.isFinite(mr) && mr >= 0 && mr !== dashboard?.config.maxRetries.effective) {
+      if (
+        Number.isFinite(mr) &&
+        mr >= 0 &&
+        mr !== dashboard?.config.maxRetries.effective
+      ) {
         patch.maxRetries = mr;
       }
       if (Object.keys(patch).length === 0) {
@@ -178,12 +247,7 @@ export default function AdminDashboardPage() {
         setError(res.error ?? 'Failed to save config');
         return;
       }
-      // Reload to pick up new effective values
-      await loadDashboard({
-        dateRange,
-        status: statusFilter,
-        search: search.trim(),
-      });
+      await loadDashboard();
     } finally {
       setSavingConfig(false);
     }
@@ -194,9 +258,6 @@ export default function AdminDashboardPage() {
     pendingMaxRetries,
     dashboard,
     loadDashboard,
-    dateRange,
-    statusFilter,
-    search,
   ]);
 
   const handleToggleTool = useCallback((toolName: string) => {
@@ -226,7 +287,9 @@ export default function AdminDashboardPage() {
     }
   }, [savingTools, pendingDisabled, loadTools]);
 
-  // ---------- Derived ----------
+  // ============================================================================
+  // Derived state
+  // ============================================================================
 
   const toolsByCategory = useMemo(() => {
     if (!toolsPayload) return {};
@@ -242,8 +305,6 @@ export default function AdminDashboardPage() {
     if (!toolsPayload) return false;
     const currentSet = new Set(toolsPayload.disabledTools);
     if (currentSet.size !== pendingDisabled.size) return true;
-    // Convert the Set to an Array to avoid --downlevelIteration requirement
-    // in the TS target this project uses.
     const pending = Array.from(pendingDisabled);
     for (let i = 0; i < pending.length; i++) {
       if (!currentSet.has(pending[i])) return true;
@@ -254,12 +315,16 @@ export default function AdminDashboardPage() {
   const hasPendingConfigChanges = useMemo(() => {
     if (!dashboard) return false;
     if (pendingModel !== dashboard.config.model.effective) return true;
-    if (Number(pendingMaxTokens) !== dashboard.config.maxTokens.effective) return true;
-    if (Number(pendingMaxRetries) !== dashboard.config.maxRetries.effective) return true;
+    if (Number(pendingMaxTokens) !== dashboard.config.maxTokens.effective)
+      return true;
+    if (Number(pendingMaxRetries) !== dashboard.config.maxRetries.effective)
+      return true;
     return false;
   }, [dashboard, pendingModel, pendingMaxTokens, pendingMaxRetries]);
 
-  // ---------- Render ----------
+  // ============================================================================
+  // Render
+  // ============================================================================
 
   if (loading) {
     return (
@@ -268,7 +333,9 @@ export default function AdminDashboardPage() {
           <span className="material-symbols-outlined text-primary animate-spin text-2xl">
             progress_activity
           </span>
-          <span className="text-sm font-semibold">Loading admin dashboard…</span>
+          <span className="text-sm font-semibold">
+            Loading admin dashboard…
+          </span>
         </div>
       </div>
     );
@@ -299,11 +366,11 @@ export default function AdminDashboardPage() {
     );
   }
 
-  const { stats, config, dailyUsage, recentSessions } = dashboard;
+  const { stats, config, dailyUsage } = dashboard;
 
   return (
     <div className="min-h-screen bg-surface text-on-surface font-body">
-      {/* ---------- Top bar ---------- */}
+      {/* ========== Top bar ========== */}
       <header className="sticky top-0 z-20 backdrop-blur-md bg-surface/85 border-b border-outline-variant/30">
         <div className="max-w-screen-2xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -320,9 +387,6 @@ export default function AdminDashboardPage() {
                 Admin Console
               </div>
             </div>
-            <span className="hidden sm:inline-block ml-4 text-xs font-label font-semibold uppercase tracking-widest text-on-surface-variant">
-              Observability · Agent config · Runtime control
-            </span>
           </div>
           <div className="flex items-center gap-3">
             <a
@@ -344,299 +408,257 @@ export default function AdminDashboardPage() {
             </button>
           </div>
         </div>
+        {/* ========== Tabs ========== */}
+        <div className="max-w-screen-2xl mx-auto px-6 pb-0">
+          <nav className="flex items-center gap-1 overflow-x-auto custom-scrollbar">
+            <TabButton
+              id="observability"
+              activeTab={activeTab}
+              onClick={setActiveTab}
+              icon="leaderboard"
+              label="Observability"
+            />
+            <TabButton
+              id="config"
+              activeTab={activeTab}
+              onClick={setActiveTab}
+              icon="tune"
+              label="Runtime Config"
+              badge={hasPendingConfigChanges ? 'unsaved' : undefined}
+            />
+            <TabButton
+              id="tools"
+              activeTab={activeTab}
+              onClick={setActiveTab}
+              icon="construction"
+              label={`Agent Tools (${toolsPayload?.tools.length ?? 22})`}
+              badge={hasPendingToolChanges ? 'unsaved' : undefined}
+            />
+            <TabButton
+              id="sessions"
+              activeTab={activeTab}
+              onClick={setActiveTab}
+              icon="history"
+              label="Recent Sessions"
+            />
+          </nav>
+        </div>
       </header>
 
-      {/* ---------- Main ---------- */}
-      <main className="max-w-screen-2xl mx-auto px-6 py-6 space-y-6">
-        {/* ---------- Stat cards (6 total) ---------- */}
-        <section>
-          <SectionHeader
-            icon="leaderboard"
-            label="Observability"
-            description="Aggregate stats across all sessions in the Redis store"
-          />
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mt-3">
-            <StatCard
-              icon="rocket_launch"
-              label="Runs today"
-              value={String(stats.runsToday)}
-              sublabel={`${stats.totalSessions} all time`}
-              tone="primary"
-            />
-            <StatCard
-              icon="check_circle"
-              label="Success rate"
-              value={`${stats.successRatePercent}%`}
-              sublabel={`${stats.successfulToday} successful today`}
-              tone="success"
-            />
-            <StatCard
-              icon="sync"
-              label="Active now"
-              value={String(stats.inProgressNow)}
-              sublabel="in progress"
-              tone="info"
-            />
-            <StatCard
-              icon="error"
-              label="Errors today"
-              value={String(stats.erroredToday)}
-              sublabel={stats.erroredToday === 0 ? 'all clear' : 'review below'}
-              tone={stats.erroredToday > 0 ? 'error' : 'success'}
-            />
-            <StatCard
-              icon="payments"
-              label="Est. cost today"
-              value={formatUsdCost(stats.todayCostUsd)}
-              sublabel={`${formatTokens(stats.todayTotalTokens)} tokens`}
-              tone="tertiary"
-            />
-            <StatCard
-              icon="calculate"
-              label="Avg cost/run"
-              value={formatUsdCost(stats.avgCostPerRunUsd)}
-              sublabel={`${stats.runsToday || '0'} runs today`}
-              tone="tertiary"
-            />
-          </div>
-        </section>
+      {/* ========== Main ========== */}
+      <main className="max-w-screen-2xl mx-auto px-6 py-6">
+        {/* OBSERVABILITY TAB */}
+        {activeTab === 'observability' && (
+          <div className="space-y-6 animate-fade-in">
+            <section>
+              <SectionHeader
+                icon="leaderboard"
+                label="Today's activity"
+                description="Pre-computed counters updated in real-time on every agent event. Reads in ~200ms."
+              />
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mt-3">
+                <StatCard
+                  icon="rocket_launch"
+                  label="Runs today"
+                  value={String(stats.runsToday)}
+                  sublabel={`${stats.totalSessions} all time`}
+                  tone="primary"
+                />
+                <StatCard
+                  icon="check_circle"
+                  label="Success rate"
+                  value={`${stats.successRatePercent}%`}
+                  sublabel={`${stats.successfulToday} of ${stats.successfulToday + stats.erroredToday} terminal today`}
+                  tone="success"
+                />
+                <StatCard
+                  icon="sync"
+                  label="Active now"
+                  value={String(stats.inProgressNow)}
+                  sublabel="in progress"
+                  tone="info"
+                />
+                <StatCard
+                  icon="error"
+                  label="Errors today"
+                  value={String(stats.erroredToday)}
+                  sublabel={
+                    stats.erroredToday === 0 ? 'all clear' : 'review below'
+                  }
+                  tone={stats.erroredToday > 0 ? 'error' : 'success'}
+                />
+                <StatCard
+                  icon="payments"
+                  label="Est. cost today"
+                  value={formatUsdCost(stats.todayCostUsd)}
+                  sublabel={`${formatTokens(stats.todayTotalTokens)} tokens (est.)`}
+                  tone="tertiary"
+                />
+                <StatCard
+                  icon="calculate"
+                  label="Avg cost/run"
+                  value={formatUsdCost(stats.avgCostPerRunUsd)}
+                  sublabel={`across ${stats.runsToday || 0} runs today`}
+                  tone="tertiary"
+                />
+              </div>
+            </section>
 
-        {/* ---------- Runtime config ---------- */}
-        <section>
-          <SectionHeader
-            icon="tune"
-            label="Runtime config"
-            description="Changes take effect on the next agent turn. No Railway redeploy needed."
-          />
-          <div className="mt-3 bg-surface-container-lowest rounded-3xl shadow-card border border-outline-variant/30 overflow-hidden">
-            <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Model */}
-              <div>
-                <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">
-                  Anthropic model
-                </label>
-                <select
-                  value={pendingModel}
-                  onChange={(e) => setPendingModel(e.target.value)}
-                  className="w-full bg-white border border-outline-variant/30 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
-                >
-                  {MODEL_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
+            {Object.keys(dailyUsage.byModel).length > 0 && (
+              <section>
+                <SectionHeader
+                  icon="analytics"
+                  label="Today's usage by model"
+                  description="Token breakdown and estimated cost per Anthropic model in use today. Cost numbers are estimates — cross-check against your Anthropic console for exact billing."
+                />
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {Object.entries(dailyUsage.byModel).map(([model, totals]) => (
+                    <div
+                      key={model}
+                      className="bg-surface-container-lowest rounded-2xl shadow-card-sm border border-outline-variant/30 p-4"
+                    >
+                      <div className="flex items-baseline justify-between mb-2">
+                        <code className="text-xs font-mono font-bold text-on-surface">
+                          {model}
+                        </code>
+                        <div className="text-lg font-headline font-extrabold text-primary">
+                          {formatUsdCost(totals.costUsd)}
+                        </div>
+                      </div>
+                      <div className="text-[10px] text-on-surface-variant space-y-0.5">
+                        <div className="flex justify-between">
+                          <span>Input</span>
+                          <span className="font-mono tabular-nums">
+                            {formatTokens(totals.input)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Output</span>
+                          <span className="font-mono tabular-nums">
+                            {formatTokens(totals.output)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Cache read</span>
+                          <span className="font-mono tabular-nums">
+                            {formatTokens(totals.cacheRead)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Cache write</span>
+                          <span className="font-mono tabular-nums">
+                            {formatTokens(totals.cacheWrite)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   ))}
-                  {/* Allow whatever the current effective value is to still be selectable */}
-                  {!MODEL_OPTIONS.find((o) => o.value === pendingModel) && (
-                    <option value={pendingModel}>
-                      {pendingModel} (current override)
-                    </option>
-                  )}
-                </select>
-                <div className="mt-1.5 text-[11px] text-on-surface-variant flex items-center gap-1.5">
-                  {config.model.hasOverride ? (
-                    <>
-                      <span className="material-symbols-outlined text-warning text-xs">
-                        bolt
-                      </span>
-                      <span>
-                        Redis override active · env default:{' '}
-                        <code className="font-mono">
-                          {config.model.envDefault ?? 'not set'}
-                        </code>
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="material-symbols-outlined text-on-surface-variant text-xs">
-                        settings
-                      </span>
-                      <span>
-                        Using env default:{' '}
-                        <code className="font-mono">
-                          {config.model.envDefault ?? 'not set'}
-                        </code>
-                      </span>
-                    </>
-                  )}
                 </div>
-              </div>
-
-              {/* Max tokens */}
-              <div>
-                <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">
-                  Max output tokens
-                </label>
-                <input
-                  type="number"
-                  value={pendingMaxTokens}
-                  onChange={(e) => setPendingMaxTokens(e.target.value)}
-                  min={512}
-                  max={64000}
-                  step={512}
-                  className="w-full bg-white border border-outline-variant/30 rounded-xl px-4 py-2.5 text-sm font-mono focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
-                />
-                <div className="mt-1.5 text-[11px] text-on-surface-variant">
-                  Default: {config.maxTokens.envDefault.toLocaleString()}
-                </div>
-              </div>
-
-              {/* Max retries */}
-              <div>
-                <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">
-                  429 retry cap
-                </label>
-                <input
-                  type="number"
-                  value={pendingMaxRetries}
-                  onChange={(e) => setPendingMaxRetries(e.target.value)}
-                  min={0}
-                  max={10}
-                  step={1}
-                  className="w-full bg-white border border-outline-variant/30 rounded-xl px-4 py-2.5 text-sm font-mono focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
-                />
-                <div className="mt-1.5 text-[11px] text-on-surface-variant">
-                  Default: {config.maxRetries.envDefault}
-                </div>
-              </div>
-            </div>
-
-            <div className="px-5 py-3 border-t border-outline-variant/20 bg-surface-container-low/30 flex items-center justify-end gap-2">
-              <button
-                disabled={!hasPendingConfigChanges || savingConfig}
-                onClick={handleSaveConfig}
-                className={cn(
-                  'px-4 py-2 rounded-xl text-sm font-headline font-bold transition-all',
-                  'bg-gradient-to-r from-primary to-primary-container text-white shadow-card-sm',
-                  'hover:scale-[1.01] active:scale-[0.99]',
-                  'disabled:from-outline disabled:to-outline disabled:scale-100 disabled:cursor-not-allowed disabled:shadow-none'
-                )}
-              >
-                {savingConfig ? 'Saving…' : hasPendingConfigChanges ? 'Save changes' : 'No changes'}
-              </button>
-            </div>
+              </section>
+            )}
           </div>
-        </section>
+        )}
 
-        {/* ---------- Tools grid ---------- */}
-        {toolsPayload && (
-          <section>
+        {/* RUNTIME CONFIG TAB */}
+        {activeTab === 'config' && (
+          <div className="space-y-6 animate-fade-in">
             <SectionHeader
-              icon="construction"
-              label={`Agent tools (${toolsPayload.tools.length})`}
-              description="Every tool the agent has access to. Toggle to disable (except request_user_approval). Changes apply to the next turn of any running session."
+              icon="tune"
+              label="Runtime config"
+              description="Changes take effect on the next agent turn. No Railway redeploy needed."
             />
-            <div className="mt-3 space-y-4">
-              {toolsPayload.categories.map((cat) => {
-                const tools = toolsByCategory[cat.id] ?? [];
-                if (tools.length === 0) return null;
-                return (
-                  <div
-                    key={cat.id}
-                    className="bg-surface-container-lowest rounded-3xl shadow-card border border-outline-variant/30 overflow-hidden"
+            <div className="bg-surface-container-lowest rounded-3xl shadow-card border border-outline-variant/30 overflow-hidden">
+              <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">
+                    Anthropic model
+                  </label>
+                  <select
+                    value={pendingModel}
+                    onChange={(e) => setPendingModel(e.target.value)}
+                    className="w-full bg-white border border-outline-variant/30 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
                   >
-                    <div className="bg-gradient-to-br from-primary/5 to-secondary/5 px-5 py-3 border-b border-outline-variant/20 flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                        <span className="material-symbols-outlined text-primary text-base">
-                          {cat.icon}
+                    {MODEL_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                    {!MODEL_OPTIONS.find((o) => o.value === pendingModel) && (
+                      <option value={pendingModel}>
+                        {pendingModel} (current override)
+                      </option>
+                    )}
+                  </select>
+                  <div className="mt-1.5 text-[11px] text-on-surface-variant flex items-center gap-1.5">
+                    {config.model.hasOverride ? (
+                      <>
+                        <span className="material-symbols-outlined text-warning text-xs">
+                          bolt
                         </span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[10px] uppercase tracking-widest font-bold text-primary">
-                          {cat.label} ({tools.length})
-                        </div>
-                        <div className="text-xs text-on-surface-variant">
-                          {cat.description}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {tools.map((tool) => {
-                        const isDisabled = pendingDisabled.has(tool.name);
-                        const canToggle = tool.canDisable;
-                        return (
-                          <button
-                            key={tool.name}
-                            disabled={!canToggle}
-                            onClick={() => canToggle && handleToggleTool(tool.name)}
-                            className={cn(
-                              'text-left rounded-2xl p-3 transition-all border',
-                              canToggle ? 'cursor-pointer hover:shadow-card-sm' : 'cursor-not-allowed',
-                              isDisabled
-                                ? 'bg-error/5 border-error/30 hover:border-error/50'
-                                : canToggle
-                                  ? 'bg-surface-container-low border-outline-variant/30 hover:border-primary/40'
-                                  : 'bg-primary/5 border-primary/30'
-                            )}
-                          >
-                            <div className="flex items-start gap-2.5">
-                              <div
-                                className={cn(
-                                  'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0',
-                                  isDisabled
-                                    ? 'bg-error/10 text-error'
-                                    : canToggle
-                                      ? 'bg-primary/10 text-primary'
-                                      : 'bg-primary/20 text-primary'
-                                )}
-                              >
-                                <span className="material-symbols-outlined text-base">
-                                  {tool.icon}
-                                </span>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1.5">
-                                  <code className="text-xs font-mono font-bold text-on-surface truncate">
-                                    {tool.name}
-                                  </code>
-                                  {!canToggle && (
-                                    <span
-                                      className="material-symbols-outlined text-[13px] text-primary flex-shrink-0"
-                                      title="Required — cannot disable"
-                                    >
-                                      lock
-                                    </span>
-                                  )}
-                                  {tool.isServerTool && (
-                                    <span
-                                      className="material-symbols-outlined text-[13px] text-info flex-shrink-0"
-                                      title="Anthropic server tool"
-                                    >
-                                      cloud
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="text-[11px] text-on-surface-variant mt-0.5 leading-snug line-clamp-3">
-                                  {tool.description}
-                                </div>
-                                <div className="mt-2 flex items-center gap-1.5">
-                                  <span
-                                    className={cn(
-                                      'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider',
-                                      isDisabled
-                                        ? 'bg-error/10 text-error'
-                                        : 'bg-success/10 text-success'
-                                    )}
-                                  >
-                                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                                    {isDisabled ? 'Disabled' : 'Enabled'}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
+                        <span>
+                          Redis override active · env default:{' '}
+                          <code className="font-mono">
+                            {config.model.envDefault ?? 'not set'}
+                          </code>
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="material-symbols-outlined text-on-surface-variant text-xs">
+                          settings
+                        </span>
+                        <span>
+                          Using env default:{' '}
+                          <code className="font-mono">
+                            {config.model.envDefault ?? 'not set'}
+                          </code>
+                        </span>
+                      </>
+                    )}
                   </div>
-                );
-              })}
-            </div>
+                </div>
 
-            {hasPendingToolChanges && (
-              <div className="mt-3 flex items-center justify-end gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">
+                    Max output tokens
+                  </label>
+                  <input
+                    type="number"
+                    value={pendingMaxTokens}
+                    onChange={(e) => setPendingMaxTokens(e.target.value)}
+                    min={512}
+                    max={64000}
+                    step={512}
+                    className="w-full bg-white border border-outline-variant/30 rounded-xl px-4 py-2.5 text-sm font-mono focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
+                  />
+                  <div className="mt-1.5 text-[11px] text-on-surface-variant">
+                    Default: {config.maxTokens.envDefault.toLocaleString()}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">
+                    429 retry cap
+                  </label>
+                  <input
+                    type="number"
+                    value={pendingMaxRetries}
+                    onChange={(e) => setPendingMaxRetries(e.target.value)}
+                    min={0}
+                    max={10}
+                    step={1}
+                    className="w-full bg-white border border-outline-variant/30 rounded-xl px-4 py-2.5 text-sm font-mono focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
+                  />
+                  <div className="mt-1.5 text-[11px] text-on-surface-variant">
+                    Default: {config.maxRetries.envDefault}
+                  </div>
+                </div>
+              </div>
+
+              <div className="px-5 py-3 border-t border-outline-variant/20 bg-surface-container-low/30 flex items-center justify-end gap-2">
                 <button
-                  disabled={savingTools}
-                  onClick={handleSaveTools}
+                  disabled={!hasPendingConfigChanges || savingConfig}
+                  onClick={handleSaveConfig}
                   className={cn(
                     'px-4 py-2 rounded-xl text-sm font-headline font-bold transition-all',
                     'bg-gradient-to-r from-primary to-primary-container text-white shadow-card-sm',
@@ -644,215 +666,318 @@ export default function AdminDashboardPage() {
                     'disabled:from-outline disabled:to-outline disabled:scale-100 disabled:cursor-not-allowed disabled:shadow-none'
                   )}
                 >
-                  {savingTools ? 'Saving…' : 'Save tool toggles'}
+                  {savingConfig
+                    ? 'Saving…'
+                    : hasPendingConfigChanges
+                      ? 'Save changes'
+                      : 'No changes'}
                 </button>
               </div>
-            )}
-          </section>
-        )}
-
-        {/* ---------- Recent sessions table ---------- */}
-        <section>
-          <SectionHeader
-            icon="history"
-            label={`Recent sessions (${recentSessions.length})`}
-            description="Filtered by date range and status. Click a sessionId to copy it to your clipboard."
-          />
-          {/* Filter row */}
-          <div className="mt-3 bg-surface-container-lowest rounded-3xl shadow-card border border-outline-variant/30 overflow-hidden">
-            <div className="px-5 py-3 border-b border-outline-variant/20 bg-surface-container-low/30 flex flex-wrap items-center gap-2">
-              <SegmentedControl
-                value={dateRange}
-                onChange={(v) => setDateRange(v as DateRangeFilter)}
-                options={[
-                  { value: 'today', label: 'Today' },
-                  { value: '24h', label: '24h' },
-                  { value: '7d', label: '7d' },
-                  { value: 'all', label: 'All time' },
-                ]}
-              />
-              <SegmentedControl
-                value={statusFilter}
-                onChange={(v) => setStatusFilter(v as StatusFilter)}
-                options={[
-                  { value: 'all', label: 'All' },
-                  { value: 'successful', label: 'Success' },
-                  { value: 'errored', label: 'Errors' },
-                  { value: 'in_progress', label: 'Active' },
-                  { value: 'abandoned', label: 'Abandoned' },
-                ]}
-              />
-              <div className="flex-1 min-w-[180px] max-w-xs">
-                <input
-                  type="search"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search sessionId…"
-                  className="w-full bg-white border border-outline-variant/30 rounded-full px-4 py-1.5 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
-                />
-              </div>
-            </div>
-
-            {/* Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-[12px]">
-                <thead className="text-left bg-surface-container-low/30">
-                  <tr className="border-b border-outline-variant/20">
-                    <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-on-surface-variant">
-                      Session
-                    </th>
-                    <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-on-surface-variant">
-                      Created
-                    </th>
-                    <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-on-surface-variant">
-                      Status
-                    </th>
-                    <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-on-surface-variant text-right">
-                      Turns
-                    </th>
-                    <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-on-surface-variant text-right">
-                      Events
-                    </th>
-                    <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-on-surface-variant text-right">
-                      Tokens
-                    </th>
-                    <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-on-surface-variant text-right">
-                      Est. cost
-                    </th>
-                    <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-on-surface-variant">
-                      Last event
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentSessions.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={8}
-                        className="px-4 py-8 text-center text-on-surface-variant italic"
-                      >
-                        No sessions match the current filters.
-                      </td>
-                    </tr>
-                  )}
-                  {recentSessions.map((s) => {
-                    const totalTokens =
-                      (s.usage?.input ?? 0) +
-                      (s.usage?.output ?? 0) +
-                      (s.usage?.cacheRead ?? 0) +
-                      (s.usage?.cacheWrite ?? 0);
-                    return (
-                      <tr
-                        key={s.sessionId}
-                        className="border-b border-outline-variant/10 hover:bg-surface-container-low/20 transition-colors"
-                      >
-                        <td className="px-4 py-2">
-                          <button
-                            onClick={() => navigator.clipboard.writeText(s.sessionId)}
-                            className="text-left group"
-                            title="Click to copy full sessionId"
-                          >
-                            <code className="text-[11px] font-mono text-on-surface group-hover:text-primary">
-                              {s.sessionId.slice(0, 20)}…{s.sessionId.slice(-4)}
-                            </code>
-                          </button>
-                          {s.projectName && (
-                            <div className="text-[10px] text-on-surface-variant italic mt-0.5 truncate max-w-[16rem]">
-                              {s.projectName}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-2 text-on-surface-variant text-[11px]">
-                          {formatRelativeTime(s.createdAt)}
-                        </td>
-                        <td className="px-4 py-2">
-                          <StatusBadge status={s.derivedStatus} />
-                        </td>
-                        <td className="px-4 py-2 text-right font-mono tabular-nums">
-                          {s.turnCount}
-                        </td>
-                        <td className="px-4 py-2 text-right font-mono tabular-nums text-on-surface-variant">
-                          {s.eventCount}
-                        </td>
-                        <td className="px-4 py-2 text-right font-mono tabular-nums">
-                          {formatTokens(totalTokens)}
-                        </td>
-                        <td className="px-4 py-2 text-right font-mono tabular-nums">
-                          {s.usage ? formatUsdCost(s.usage.costUsd) : '—'}
-                        </td>
-                        <td className="px-4 py-2 text-[10px] font-mono text-on-surface-variant">
-                          {s.lastEventType ?? '—'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
             </div>
           </div>
-        </section>
+        )}
 
-        {/* ---------- Daily usage breakdown ---------- */}
-        {Object.keys(dailyUsage.byModel).length > 0 && (
-          <section>
+        {/* TOOLS TAB */}
+        {activeTab === 'tools' && toolsPayload && (
+          <div className="space-y-4 animate-fade-in">
             <SectionHeader
-              icon="analytics"
-              label="Today's usage by model"
-              description="Token breakdown and estimated cost by Anthropic model in use today"
+              icon="construction"
+              label={`Agent tools (${toolsPayload.tools.length})`}
+              description="Every tool the agent has access to, grouped by function. Toggle to disable — except request_user_approval which is protected (it's the only blocking tool). Changes apply to the next turn of any running session."
             />
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
-              {Object.entries(dailyUsage.byModel).map(([model, totals]) => (
+            {toolsPayload.categories.map((cat) => {
+              const tools = toolsByCategory[cat.id] ?? [];
+              if (tools.length === 0) return null;
+              return (
                 <div
-                  key={model}
-                  className="bg-surface-container-lowest rounded-2xl shadow-card-sm border border-outline-variant/30 p-4"
+                  key={cat.id}
+                  className="bg-surface-container-lowest rounded-3xl shadow-card border border-outline-variant/30 overflow-hidden"
                 >
-                  <div className="flex items-baseline justify-between mb-2">
-                    <code className="text-xs font-mono font-bold text-on-surface">
-                      {model}
-                    </code>
-                    <div className="text-lg font-headline font-extrabold text-primary">
-                      {formatUsdCost(totals.costUsd)}
+                  <div className="bg-gradient-to-br from-primary/5 to-secondary/5 px-5 py-3 border-b border-outline-variant/20 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <span className="material-symbols-outlined text-primary text-base">
+                        {cat.icon}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] uppercase tracking-widest font-bold text-primary">
+                        {cat.label} ({tools.length})
+                      </div>
+                      <div className="text-xs text-on-surface-variant">
+                        {cat.description}
+                      </div>
                     </div>
                   </div>
-                  <div className="text-[10px] text-on-surface-variant space-y-0.5">
-                    <div className="flex justify-between">
-                      <span>Input</span>
-                      <span className="font-mono tabular-nums">
-                        {formatTokens(totals.input)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Output</span>
-                      <span className="font-mono tabular-nums">
-                        {formatTokens(totals.output)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Cache read</span>
-                      <span className="font-mono tabular-nums">
-                        {formatTokens(totals.cacheRead)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Cache write</span>
-                      <span className="font-mono tabular-nums">
-                        {formatTokens(totals.cacheWrite)}
-                      </span>
-                    </div>
+                  <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {tools.map((tool) => {
+                      const isDisabled = pendingDisabled.has(tool.name);
+                      const canToggle = tool.canDisable;
+                      return (
+                        <button
+                          key={tool.name}
+                          disabled={!canToggle}
+                          onClick={() => canToggle && handleToggleTool(tool.name)}
+                          className={cn(
+                            'text-left rounded-2xl p-3 transition-all border',
+                            canToggle
+                              ? 'cursor-pointer hover:shadow-card-sm'
+                              : 'cursor-not-allowed',
+                            isDisabled
+                              ? 'bg-error/5 border-error/30 hover:border-error/50'
+                              : canToggle
+                                ? 'bg-surface-container-low border-outline-variant/30 hover:border-primary/40'
+                                : 'bg-primary/5 border-primary/30'
+                          )}
+                        >
+                          <div className="flex items-start gap-2.5">
+                            <div
+                              className={cn(
+                                'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0',
+                                isDisabled
+                                  ? 'bg-error/10 text-error'
+                                  : canToggle
+                                    ? 'bg-primary/10 text-primary'
+                                    : 'bg-primary/20 text-primary'
+                              )}
+                            >
+                              <span className="material-symbols-outlined text-base">
+                                {tool.icon}
+                              </span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <code className="text-xs font-mono font-bold text-on-surface truncate">
+                                  {tool.name}
+                                </code>
+                                {!canToggle && (
+                                  <span
+                                    className="material-symbols-outlined text-[13px] text-primary flex-shrink-0"
+                                    title="Required — cannot disable"
+                                  >
+                                    lock
+                                  </span>
+                                )}
+                                {tool.isServerTool && (
+                                  <span
+                                    className="material-symbols-outlined text-[13px] text-info flex-shrink-0"
+                                    title="Anthropic server tool"
+                                  >
+                                    cloud
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-on-surface-variant mt-0.5 leading-snug line-clamp-3">
+                                {tool.description}
+                              </div>
+                              <div className="mt-2 flex items-center gap-1.5">
+                                <span
+                                  className={cn(
+                                    'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider',
+                                    isDisabled
+                                      ? 'bg-error/10 text-error'
+                                      : 'bg-success/10 text-success'
+                                  )}
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                                  {isDisabled ? 'Disabled' : 'Enabled'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-              ))}
+              );
+            })}
+            {hasPendingToolChanges && (
+              <div className="sticky bottom-4 flex items-center justify-end gap-2 px-1">
+                <div className="bg-surface-container-lowest border border-outline-variant/40 rounded-full shadow-card-lg px-4 py-2 flex items-center gap-3">
+                  <span className="text-xs text-on-surface-variant">
+                    You have unsaved toggle changes
+                  </span>
+                  <button
+                    disabled={savingTools}
+                    onClick={handleSaveTools}
+                    className={cn(
+                      'px-4 py-1.5 rounded-full text-xs font-headline font-bold transition-all',
+                      'bg-gradient-to-r from-primary to-primary-container text-white shadow-card-sm',
+                      'hover:scale-[1.01] active:scale-[0.99]',
+                      'disabled:from-outline disabled:to-outline disabled:scale-100 disabled:cursor-not-allowed disabled:shadow-none'
+                    )}
+                  >
+                    {savingTools ? 'Saving…' : 'Save tool toggles'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* SESSIONS TAB */}
+        {activeTab === 'sessions' && (
+          <div className="space-y-4 animate-fade-in">
+            <SectionHeader
+              icon="history"
+              label="Recent sessions"
+              description="Lazy-loaded from a pre-built sorted set. Reads the top 50 most recent sessions then applies filters client-side. Click a sessionId to copy it to your clipboard."
+            />
+            <div className="bg-surface-container-lowest rounded-3xl shadow-card border border-outline-variant/30 overflow-hidden">
+              <div className="px-5 py-3 border-b border-outline-variant/20 bg-surface-container-low/30 flex flex-wrap items-center gap-2">
+                <SegmentedControl
+                  value={dateRange}
+                  onChange={(v) => setDateRange(v as DateRangeFilter)}
+                  options={[
+                    { value: 'today', label: 'Today' },
+                    { value: '24h', label: '24h' },
+                    { value: '7d', label: '7d' },
+                    { value: 'all', label: 'All time' },
+                  ]}
+                />
+                <SegmentedControl
+                  value={statusFilter}
+                  onChange={(v) => setStatusFilter(v as StatusFilter)}
+                  options={[
+                    { value: 'all', label: 'All' },
+                    { value: 'successful', label: 'Success' },
+                    { value: 'errored', label: 'Errors' },
+                    { value: 'in_progress', label: 'Active' },
+                    { value: 'abandoned', label: 'Abandoned' },
+                  ]}
+                />
+                <div className="flex-1 min-w-[180px] max-w-xs">
+                  <input
+                    type="search"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search sessionId…"
+                    className="w-full bg-white border border-outline-variant/30 rounded-full px-4 py-1.5 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
+                  />
+                </div>
+                {sessionsLoading && (
+                  <span className="material-symbols-outlined text-primary animate-spin text-sm">
+                    progress_activity
+                  </span>
+                )}
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12px]">
+                  <thead className="text-left bg-surface-container-low/30">
+                    <tr className="border-b border-outline-variant/20">
+                      <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-on-surface-variant">
+                        Session
+                      </th>
+                      <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-on-surface-variant">
+                        Created
+                      </th>
+                      <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-on-surface-variant">
+                        Status
+                      </th>
+                      <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-on-surface-variant text-right">
+                        Turns
+                      </th>
+                      <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-on-surface-variant text-right">
+                        Events
+                      </th>
+                      <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-on-surface-variant text-right">
+                        Tokens
+                      </th>
+                      <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-on-surface-variant text-right">
+                        Est. cost
+                      </th>
+                      <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-on-surface-variant">
+                        Last event
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sessionsLoading && sessions === null && (
+                      <tr>
+                        <td
+                          colSpan={8}
+                          className="px-4 py-8 text-center text-on-surface-variant italic"
+                        >
+                          Loading recent sessions…
+                        </td>
+                      </tr>
+                    )}
+                    {!sessionsLoading &&
+                      sessions !== null &&
+                      sessions.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={8}
+                            className="px-4 py-8 text-center text-on-surface-variant italic"
+                          >
+                            No sessions match the current filters.
+                          </td>
+                        </tr>
+                      )}
+                    {(sessions ?? []).map((s) => {
+                      const totalTokens =
+                        (s.usage?.input ?? 0) +
+                        (s.usage?.output ?? 0) +
+                        (s.usage?.cacheRead ?? 0) +
+                        (s.usage?.cacheWrite ?? 0);
+                      return (
+                        <tr
+                          key={s.sessionId}
+                          className="border-b border-outline-variant/10 hover:bg-surface-container-low/20 transition-colors"
+                        >
+                          <td className="px-4 py-2">
+                            <button
+                              onClick={() =>
+                                navigator.clipboard.writeText(s.sessionId)
+                              }
+                              className="text-left group"
+                              title="Click to copy full sessionId"
+                            >
+                              <code className="text-[11px] font-mono text-on-surface group-hover:text-primary">
+                                {s.sessionId.slice(0, 20)}…{s.sessionId.slice(-4)}
+                              </code>
+                            </button>
+                            {s.projectName && (
+                              <div className="text-[10px] text-on-surface-variant italic mt-0.5 truncate max-w-[16rem]">
+                                {s.projectName}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-2 text-on-surface-variant text-[11px]">
+                            {formatRelativeTime(s.createdAt)}
+                          </td>
+                          <td className="px-4 py-2">
+                            <StatusBadge status={s.derivedStatus} />
+                          </td>
+                          <td className="px-4 py-2 text-right font-mono tabular-nums">
+                            {s.turnCount}
+                          </td>
+                          <td className="px-4 py-2 text-right font-mono tabular-nums text-on-surface-variant">
+                            {s.eventCount}
+                          </td>
+                          <td className="px-4 py-2 text-right font-mono tabular-nums">
+                            {formatTokens(totalTokens)}
+                          </td>
+                          <td className="px-4 py-2 text-right font-mono tabular-nums">
+                            {s.usage ? formatUsdCost(s.usage.costUsd) : '—'}
+                          </td>
+                          <td className="px-4 py-2 text-[10px] font-mono text-on-surface-variant">
+                            {s.lastEventType ?? '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <div className="mt-2 text-[10px] text-on-surface-variant italic">
-              Cost estimates are approximate based on Anthropic public
-              pricing. For exact billing, see your Anthropic console.
-            </div>
-          </section>
+          </div>
         )}
 
         {/* Error banner at bottom */}
         {error && (
-          <div className="p-3 bg-error-container/30 rounded-xl text-xs text-error border border-error/20">
+          <div className="mt-6 p-3 bg-error-container/30 rounded-xl text-xs text-error border border-error/20">
             <strong>Error:</strong> {error}
             <button
               onClick={() => setError(null)}
@@ -868,8 +993,52 @@ export default function AdminDashboardPage() {
 }
 
 // ============================================================================
-// Sub-components — kept in this file for easy editing, small enough to inline
+// Sub-components
 // ============================================================================
+
+function TabButton({
+  id,
+  activeTab,
+  onClick,
+  icon,
+  label,
+  badge,
+}: {
+  id: TabId;
+  activeTab: TabId;
+  onClick: (id: TabId) => void;
+  icon: string;
+  label: string;
+  badge?: string;
+}) {
+  const isActive = activeTab === id;
+  return (
+    <button
+      onClick={() => onClick(id)}
+      className={cn(
+        'flex items-center gap-2 px-4 py-2.5 text-[12px] font-semibold border-b-2 transition-all whitespace-nowrap',
+        isActive
+          ? 'border-primary text-primary'
+          : 'border-transparent text-on-surface-variant hover:text-on-surface hover:border-outline-variant/40'
+      )}
+    >
+      <span
+        className={cn(
+          'material-symbols-outlined text-base',
+          isActive ? 'text-primary' : 'text-on-surface-variant'
+        )}
+      >
+        {icon}
+      </span>
+      <span>{label}</span>
+      {badge && (
+        <span className="ml-1 text-[9px] font-bold uppercase tracking-wider text-warning bg-warning/10 border border-warning/30 rounded-full px-2 py-0.5">
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+}
 
 function SectionHeader({
   icon,
@@ -973,10 +1142,26 @@ function StatusBadge({
   status: 'successful' | 'errored' | 'in_progress' | 'abandoned';
 }) {
   const config = {
-    successful: { label: 'Success', tone: 'bg-success/10 text-success border-success/30', icon: 'check' },
-    errored: { label: 'Error', tone: 'bg-error/10 text-error border-error/30', icon: 'close' },
-    in_progress: { label: 'Active', tone: 'bg-primary/10 text-primary border-primary/30', icon: 'progress_activity' },
-    abandoned: { label: 'Abandoned', tone: 'bg-outline/10 text-outline border-outline/30', icon: 'logout' },
+    successful: {
+      label: 'Success',
+      tone: 'bg-success/10 text-success border-success/30',
+      icon: 'check',
+    },
+    errored: {
+      label: 'Error',
+      tone: 'bg-error/10 text-error border-error/30',
+      icon: 'close',
+    },
+    in_progress: {
+      label: 'Active',
+      tone: 'bg-primary/10 text-primary border-primary/30',
+      icon: 'progress_activity',
+    },
+    abandoned: {
+      label: 'Abandoned',
+      tone: 'bg-outline/10 text-outline border-outline/30',
+      icon: 'logout',
+    },
   } as const;
   const c = config[status];
   return (

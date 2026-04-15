@@ -7,6 +7,7 @@ import type {
   SessionMeta,
 } from '../types';
 import { getRedis, key, SESSION_TTL_SECONDS, touchSessionTtl } from './redis';
+import { recordSessionStarted } from '../admin/counters';
 
 /**
  * Session state — the working memory of one agent run.
@@ -104,6 +105,12 @@ export async function loadSession(sessionId: string): Promise<Session> {
     ]);
 
   if (!meta || Object.keys(meta).length === 0) {
+    // First time we're seeing this sessionId (or it expired out of
+    // Redis and we're starting fresh). Record this in the admin
+    // counters so the dashboard's "runs today" stat stays accurate
+    // without a full SCAN. Fire-and-forget — Redis hiccups here must
+    // never break session loading.
+    void recordSessionStarted(sessionId).catch(() => {});
     return newSession(sessionId);
   }
 

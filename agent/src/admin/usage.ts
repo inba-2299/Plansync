@@ -23,17 +23,25 @@ import { getRedis } from '../memory/redis';
  * Anthropic console.
  */
 
-// ---------- Pricing table (approximate, USD per million tokens) ----------
+// ---------- Pricing table (USD per million tokens) ----------
 //
-// These numbers are from Anthropic's public pricing page as of mid-2025.
-// They will drift over time — update this table when pricing changes.
-// The admin UI labels the cost as "estimated" to set expectations.
+// Source: Anthropic public pricing page (anthropic.com/pricing), values
+// current as of 2026-04-16. Numbers here should be cross-checked against
+// the current published prices before making billing decisions — the
+// admin dashboard labels cost as "Estimated" and users should always
+// verify against their actual Anthropic console for exact billing.
 //
-// Prompt caching:
-//   - cache_read (a cached input token being READ back) is ~10% of
-//     regular input cost.
-//   - cache_write (a cache_creation_input_token) is ~125% of regular
-//     input cost.
+// Pricing model for all Claude 4.5 family models:
+//   - Base input: charged per input token (USD/MTok)
+//   - Base output: charged per output token (USD/MTok)
+//   - Cache read (input token served from a cached context): 10% of
+//     the base input rate
+//   - Cache write (input token stored for caching, via a
+//     cache_control marker): 125% of the base input rate
+//
+// If Anthropic updates pricing, change only this object — everything
+// else (per-session totals, daily aggregates, dashboard display)
+// flows from here via `estimateCostUsd()`.
 
 export interface ModelPricing {
   inputPer1M: number;

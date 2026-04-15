@@ -159,11 +159,21 @@ export interface DailyUsageSummary {
   }>;
 }
 
+/**
+ * NOTE: `recentSessions` removed from this shape in the post-admin-portal-v1
+ * rewrite. Recent sessions are now lazy-loaded via `fetchRecentSessions`
+ * when the user clicks the Sessions tab, NOT on the initial dashboard
+ * load. This drops the initial dashboard load time from ~30s to ~200ms.
+ */
 export interface DashboardPayload {
   stats: DashboardStats;
   config: AdminConfigSnapshot;
   dailyUsage: DailyUsageSummary;
-  recentSessions: RecentSessionRow[];
+  generatedAt: number;
+}
+
+export interface SessionsPayload {
+  sessions: RecentSessionRow[];
   generatedAt: number;
 }
 
@@ -194,16 +204,31 @@ export interface DashboardQuery {
   limit?: number;
 }
 
-export async function fetchDashboard(
+/**
+ * Fetch the FAST part of the dashboard: stats + config + daily usage.
+ * Does NOT include recent sessions. This is the one fired on initial
+ * dashboard load and on the Observability tab.
+ */
+export async function fetchDashboard(): Promise<ApiResult<DashboardPayload>> {
+  return adminFetch('/admin/dashboard');
+}
+
+/**
+ * Fetch the recent sessions list with filters. Fired only when the
+ * Sessions tab is opened, or when the filters change. This is the
+ * one that used to be bundled into /admin/dashboard and made it
+ * slow — now it's split out and lazy-loaded.
+ */
+export async function fetchRecentSessions(
   query: DashboardQuery = {}
-): Promise<ApiResult<DashboardPayload>> {
+): Promise<ApiResult<SessionsPayload>> {
   const params = new URLSearchParams();
   if (query.dateRange) params.set('dateRange', query.dateRange);
   if (query.status) params.set('status', query.status);
   if (query.search) params.set('search', query.search);
   if (query.limit) params.set('limit', String(query.limit));
   const qs = params.toString();
-  return adminFetch(`/admin/dashboard${qs ? `?${qs}` : ''}`);
+  return adminFetch(`/admin/sessions${qs ? `?${qs}` : ''}`);
 }
 
 export async function fetchTools(): Promise<

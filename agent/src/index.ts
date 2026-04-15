@@ -9,6 +9,10 @@ import {
   loadSessionEvents,
   clearSessionEvents,
 } from './memory/events';
+import {
+  recordSessionCompleted,
+  recordSessionErrored,
+} from './admin/counters';
 import { startSseStream, makeEmitter, endSseStream } from './lib/sse';
 import { runAgentLoop } from './agent/loop';
 import { encrypt } from './lib/crypto';
@@ -256,21 +260,32 @@ app.post('/agent', async (req: Request, res: Response) => {
   const baseEmit = makeEmitter(res);
 
   // Wrap the emitter so every event is ALSO persisted to Redis under
-  // `session:{id}:events`. This is what powers refresh-hydration on the
-  // frontend: when the user refreshes mid-session, the client calls
-  // GET /session/:id/events and replays the list through its own
-  // handleAgentEvent — reconstructing reasoning bubbles, tool calls,
-  // display cards, journey state, and any pending approval without
-  // duplicated state-derivation logic.
+  // `session:{id}:events` AND classified into admin counters.
   //
-  // The persist call runs BEFORE forwarding to SSE because we want
-  // every event captured even if the client disconnected mid-stream
+  // Events log (`session:{id}:events`):
+  // This is what powers refresh-hydration on the frontend. When the
+  // user refreshes mid-session, the client calls GET /session/:id/events
+  // and replays the list through its own handleAgentEvent —
+  // reconstructing reasoning bubbles, tool calls, display cards,
+  // journey state, and any pending approval without duplicated
+  // state-derivation logic.
+  //
+  // Persistence runs BEFORE forwarding to SSE because we want every
+  // event captured even if the client disconnected mid-stream
   // (makeEmitter silently drops writes to a closed response, but
   // persistence must still happen — otherwise a refresh would lose
   // events emitted after the disconnect).
   //
-  // Fire-and-forget: a Redis write failure should never crash the
-  // agent loop. We log and move on.
+  // Admin counter updates:
+  // When we see a successful completion (display_component with
+  // component === 'CompletionCard') or an error event, we increment
+  // the admin daily counters. This replaces the old pattern of
+  // SCANning and walking event logs on every dashboard load — counters
+  // are O(1) reads via SCARD.
+  //
+  // Fire-and-forget: a Redis write failure (either persistence or
+  // counters) should never crash the agent loop. All failures are
+  // logged and swallowed.
   const emit: (event: AgentEvent) => void = (event) => {
     void appendSessionEvent(sessionId, event).catch((err) => {
       console.error(
@@ -278,6 +293,19 @@ app.post('/agent', async (req: Request, res: Response) => {
         err instanceof Error ? err.message : err
       );
     });
+
+    // Classify for admin counters. Set semantics in the counters
+    // dedupe automatically — we're safe to fire on every matching
+    // event even if the agent re-calls display_completion_summary.
+    if (
+      event.type === 'display_component' &&
+      (event as { component?: string }).component === 'CompletionCard'
+    ) {
+      void recordSessionCompleted(sessionId).catch(() => {});
+    } else if (event.type === 'error') {
+      void recordSessionErrored(sessionId).catch(() => {});
+    }
+
     baseEmit(event);
   };
 
@@ -529,33 +557,20 @@ app.get('/admin/me', requireAdminAuth, (_req: Request, res: Response) => {
 });
 
 // ---------- GET /admin/dashboard ----------
-// Returns everything the dashboard needs in ONE request: stats, config,
-// tools catalog, today's usage, and filtered recent sessions.
 //
-// Query params:
-//   dateRange: today | 24h | 7d | all   (default: 7d)
-//   status:    all | successful | errored | in_progress | abandoned  (default: all)
-//   search:    partial sessionId match   (default: empty)
-//   limit:     max rows (default 25, max 100)
-app.get('/admin/dashboard', requireAdminAuth, async (req: Request, res: Response) => {
+// Returns the FAST part of the dashboard: stats, config, daily usage.
+// The expensive recent-sessions list is NOT included here — it's
+// lazy-loaded via GET /admin/sessions when the user clicks the
+// Sessions tab. This split is what makes the dashboard load in
+// ~200ms instead of ~30 seconds.
+//
+// No query params — this endpoint always returns "now" data.
+app.get('/admin/dashboard', requireAdminAuth, async (_req: Request, res: Response) => {
   try {
-    const dateRange = (typeof req.query.dateRange === 'string'
-      ? req.query.dateRange
-      : '7d') as DateRangeFilter;
-    const status = (typeof req.query.status === 'string'
-      ? req.query.status
-      : 'all') as StatusFilter;
-    const search = typeof req.query.search === 'string' ? req.query.search : '';
-    const limit = Math.min(
-      100,
-      Math.max(1, Number(req.query.limit ?? 25))
-    );
-
-    const [stats, config, dailyUsage, recentSessions] = await Promise.all([
+    const [stats, config, dailyUsage] = await Promise.all([
       computeDashboardStats(),
       getAdminConfigSnapshot(),
       getDailyUsage(),
-      listRecentSessions({ dateRange, status, search, limit }),
     ]);
 
     // Compute the two "today's cost" stat cards from dailyUsage
@@ -573,9 +588,51 @@ app.get('/admin/dashboard', requireAdminAuth, async (req: Request, res: Response
       },
       config,
       dailyUsage,
-      recentSessions,
       generatedAt: Date.now(),
     });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+// ---------- GET /admin/sessions ----------
+//
+// Lazy-loaded recent sessions table. Fetched ONLY when the user
+// clicks the Sessions tab in the admin dashboard (or when the
+// filter inputs change). This is the formerly-expensive query that
+// walked every session's event log — now it uses the pre-built
+// `admin:sessions:by_created` sorted set to pick the top N recent
+// sessionIds, and per-session outcome is derived from the
+// `admin:sessions:successful/errored` counter sets (O(1) SISMEMBER).
+//
+// Query params:
+//   dateRange: today | 24h | 7d | all   (default: all)
+//   status:    all | successful | errored | in_progress | abandoned  (default: all)
+//   search:    partial sessionId match   (default: empty)
+//   limit:     max rows (default 25, max 100)
+app.get('/admin/sessions', requireAdminAuth, async (req: Request, res: Response) => {
+  try {
+    const dateRange = (typeof req.query.dateRange === 'string'
+      ? req.query.dateRange
+      : 'all') as DateRangeFilter;
+    const status = (typeof req.query.status === 'string'
+      ? req.query.status
+      : 'all') as StatusFilter;
+    const search = typeof req.query.search === 'string' ? req.query.search : '';
+    const limit = Math.min(
+      100,
+      Math.max(1, Number(req.query.limit ?? 25))
+    );
+
+    const recentSessions = await listRecentSessions({
+      dateRange,
+      status,
+      search,
+      limit,
+    });
+
+    res.json({ sessions: recentSessions, generatedAt: Date.now() });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: message });
