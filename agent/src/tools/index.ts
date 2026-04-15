@@ -28,6 +28,7 @@ import { createPhaseTool } from './create-phase';
 import { createTaskTool, type CreateTaskInput } from './create-task';
 import { createTasksBulkTool } from './create-tasks-bulk';
 import { addDependencyTool } from './add-dependency';
+import { executePlanCreationTool } from './execute-plan-creation';
 
 // Group F: Verification
 import { getTaskTool } from './get-task';
@@ -131,6 +132,11 @@ const HANDLERS: Record<string, ToolHandler> = {
   add_dependency: (input, ctx) =>
     addDependencyTool(
       input as { fromTempId: string; toTempId: string; type?: string; lagDays?: number } as unknown as import('./add-dependency').AddDependencyInput,
+      ctx
+    ),
+  execute_plan_creation: (input, ctx) =>
+    executePlanCreationTool(
+      input as unknown as import('./execute-plan-creation').ExecutePlanCreationInput,
       ctx
     ),
 
@@ -506,6 +512,49 @@ export const TOOL_SCHEMAS = [
         lagDays: { type: 'integer' },
       },
       required: ['fromTempId', 'toTempId'],
+    },
+  },
+
+  {
+    name: 'execute_plan_creation',
+    description:
+      "THE HAPPY PATH for creating a Rocketlane project from an approved plan. Batches the entire execution (project shell, phases, tasks, subtasks, milestones in pass 1; dependencies in pass 2) into a single tool call. Takes the plan via artifactId (from display_plan_for_review) so the full plan JSON doesn't have to pass through the tool input — massively reduces token cost vs calling create_phase/create_task/add_dependency individually. Emits ProgressFeed events throughout so the frontend card updates in real time. Call this AFTER: (1) the plan has been validated, (2) display_plan_for_review has been called and returned an artifactId, (3) the user has approved the plan via request_user_approval, and (4) you've collected project metadata (name/customer/owner/dates) via sequential approvals. Returns a summary with counts of successes and failures. For any failed items listed in the summary, fall back to fine-grained tools (retry_task, create_task, add_dependency) to recover individually.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        planArtifactId: {
+          type: 'string',
+          description:
+            'The artifactId returned by display_plan_for_review. Required — the tool loads the plan from this artifact instead of re-inlining it.',
+        },
+        projectName: { type: 'string' },
+        ownerEmail: {
+          type: 'string',
+          description: 'A TEAM_MEMBER email from get_rocketlane_context',
+        },
+        customerName: {
+          type: 'string',
+          description:
+            "A customer company name from get_rocketlane_context, OR a new name — the Rocketlane API auto-creates the company if it doesn't exist.",
+        },
+        startDate: {
+          type: 'string',
+          description: 'YYYY-MM-DD format. The project start date.',
+        },
+        dueDate: {
+          type: 'string',
+          description: 'YYYY-MM-DD format. The project end date.',
+        },
+        description: { type: 'string' },
+      },
+      required: [
+        'planArtifactId',
+        'projectName',
+        'ownerEmail',
+        'customerName',
+        'startDate',
+        'dueDate',
+      ],
     },
   },
 

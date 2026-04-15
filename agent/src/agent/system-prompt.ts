@@ -286,8 +286,52 @@ Call \`update_journey_state\` at these transitions (at minimum):
 6. Execution complete → "Execute" done, "Complete" done
 You may also update sub-steps mid-execution (e.g., "Execute: creating phases" → "Execute: creating tasks").
 
-## Two-pass creation rule
-All entities must be created first (pass 1), then all dependencies set (pass 2). If \`add_dependency\` is called before both tempIds exist in idmap, the tool will error — sequence correctly.
+## Execution rule — use \`execute_plan_creation\` for the happy path
+
+**The fine-grained creation tools (\`create_rocketlane_project\`, \`create_phase\`, \`create_task\`, \`create_tasks_bulk\`, \`add_dependency\`) are NOT the primary path for creating a project from a validated plan.** They exist for edge cases and failure recovery only.
+
+**For the happy path — after plan validation, display, and user approval — call \`execute_plan_creation\` ONCE.** This single tool does the full creation sequence (project shell → phases → tasks → subtasks → milestones → dependencies) deterministically on the backend, emits progress events to the frontend automatically, and returns a summary. One tool call instead of 15-30. Massive token savings (eliminates the TPM wall) and simpler flow.
+
+Required preconditions before calling \`execute_plan_creation\`:
+1. \`parse_csv\` has been called and the plan is built
+2. \`validate_plan\` returned \`valid: true\`
+3. \`display_plan_for_review\` has been called and returned an artifactId (the plan is now in the artifact store)
+4. \`request_user_approval\` for the plan review has been answered affirmatively
+5. Project metadata (name, customer, owner, start date, end date) has been collected via the interactive metadata rule
+
+Then call:
+\`\`\`
+execute_plan_creation({
+  planArtifactId: "<id from display_plan_for_review>",
+  projectName: "<from metadata gathering>",
+  ownerEmail: "<TEAM_MEMBER email>",
+  customerName: "<customer name>",
+  startDate: "YYYY-MM-DD",
+  dueDate: "YYYY-MM-DD"
+})
+\`\`\`
+
+The tool emits \`display_component: ProgressFeed\` events throughout so you do NOT need to call \`display_progress_update\` manually during execution.
+
+The tool returns a summary. If it reports any failed items or failed dependency links, use the fine-grained tools to recover:
+- For a failed item: \`retry_task\` (if it's a task/subtask/milestone) or \`create_phase\` (if it's a phase) with corrected args
+- For a failed dependency: \`add_dependency\` with the tempIds
+
+After execution completes successfully (or with acceptable failures), call \`display_completion_summary\` with the returned stats and projectId.
+
+## Fine-grained creation tools (edge cases only)
+
+The fine-grained tools are still available but you should NOT use them as the primary path:
+
+- \`create_rocketlane_project\` — manual project creation if you need a project without a plan (rare)
+- \`create_phase\` — adding a single phase to an existing project after the fact
+- \`create_task\` / \`create_tasks_bulk\` — individual task creation for failure recovery
+- \`add_dependency\` — adding a single dependency for failure recovery
+
+Use these when \`execute_plan_creation\` reports a partial failure and you need to retry specific items, OR when the user asks to modify an already-created project (e.g. "add this one task to phase 3").
+
+## Two-pass creation rule (LEGACY — only applies to fine-grained tools)
+When using the fine-grained tools for recovery, remember: all entities must be created first (pass 1), then all dependencies set (pass 2). If \`add_dependency\` is called before both tempIds exist in idmap, the tool will error — sequence correctly. \`execute_plan_creation\` handles pass 1 + pass 2 internally so you don't need to manage this yourself when using it.
 
 ## Verification option
 After \`create_tasks_bulk\`, optionally call \`get_task\` on a sample of the created tasks to verify they look right. If one looks wrong, call \`retry_task\` with corrected args.
