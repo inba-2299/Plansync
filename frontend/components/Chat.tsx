@@ -177,6 +177,11 @@ export function Chat() {
   const currentReasoningIdRef = useRef<string | null>(null);
   const currentReasoningStartedAtRef = useRef<number | null>(null);
 
+  // Mirror of messages state as a ref, used by callbacks that need to
+  // check "is there a pending approval?" without being recreated on
+  // every message change. Updated via useEffect below.
+  const messagesRef = useRef<UiMessage[]>([]);
+
   // Scroll targets — one per scroll container
   const agentColEndRef = useRef<HTMLDivElement | null>(null);
   const userColEndRef = useRef<HTMLDivElement | null>(null);
@@ -475,13 +480,56 @@ export function Chat() {
 
   // ---------- File upload handlers ----------
 
+  /**
+   * Post-upload flow. Both handlers (inline card and paperclip) funnel
+   * into this. If there's an unanswered approval in the current messages
+   * (e.g. the agent called request_user_approval with an upload question),
+   * we resolve it by sending a uiAction — that maps to a `tool_result` on
+   * the backend, which Anthropic requires to match the pending `tool_use`.
+   * Otherwise (no pending approval), we send a fresh user text message.
+   *
+   * This is the fix for the "messages.N: tool_use ids were found without
+   * tool_result blocks immediately after" Anthropic 400 that fired when
+   * users uploaded a file via the inline FileUploadCard inside an
+   * ApprovalPrompt — the tool_use for request_user_approval was being
+   * orphaned because sendUserMessage pushes a user-text block, not a
+   * tool_result block.
+   */
+  const resolveUploadOrSend = useCallback(
+    (artifactId: string, filename: string, rowCount: number | string) => {
+      const unanswered = messagesRef.current.find(
+        (m) => m.kind === 'awaiting' && !m.answered
+      );
+      const resumeText = `I've uploaded "${filename}" — ${rowCount} rows. Artifact id: ${artifactId}. Please parse it and walk me through creating the project.`;
+
+      if (unanswered && unanswered.kind === 'awaiting') {
+        // Mark the approval as answered in the UI
+        updateMessage(unanswered.id, (m) =>
+          m.kind === 'awaiting'
+            ? { ...m, answered: true, selectedLabel: `Uploaded: ${filename}` }
+            : m
+        );
+        // Resume via uiAction so the backend emits a tool_result for the
+        // pending tool_use. Include the artifact metadata in `data` so the
+        // agent has everything it needs to start parsing.
+        sendUiAction({
+          toolUseId: unanswered.toolUseId,
+          data: resumeText,
+          label: `Uploaded: ${filename} (${rowCount} rows)`,
+        });
+      } else {
+        // No pending approval — fresh user message
+        sendUserMessage(resumeText);
+      }
+    },
+    [sendUiAction, sendUserMessage, updateMessage]
+  );
+
   const handleFileUploaded = useCallback(
     (artifactId: string, filename: string, rowCount: number) => {
-      sendUserMessage(
-        `I've uploaded "${filename}" — ${rowCount} rows. Artifact id: ${artifactId}. Please parse it and walk me through creating the project.`
-      );
+      resolveUploadOrSend(artifactId, filename, rowCount);
     },
-    [sendUserMessage]
+    [resolveUploadOrSend]
   );
 
   const handlePaperclipFileSelected = useCallback(
@@ -499,22 +547,31 @@ export function Chat() {
           });
           return;
         }
+        // Show a user-visible confirmation bubble so they see what they sent
         addMessage({
           kind: 'user',
           id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           content: `Uploaded: ${file.name} (${result.rowCount ?? '?'} rows)`,
           createdAt: Date.now(),
         });
-        sendUserMessage(
-          `I've uploaded "${file.name}" — ${result.rowCount ?? 'unknown'} rows. Artifact id: ${result.artifactId}. Please parse it and walk me through creating the project.`,
-          { showInList: false }
+        resolveUploadOrSend(
+          result.artifactId,
+          file.name,
+          result.rowCount ?? 'unknown'
         );
       } finally {
         setUploading(false);
       }
     },
-    [sessionId, uploading, streaming, addMessage, sendUserMessage]
+    [sessionId, uploading, streaming, addMessage, resolveUploadOrSend]
   );
+
+  // Keep messagesRef.current in sync with the messages state. Used by
+  // file upload callbacks that need to read the latest messages (to find
+  // a pending approval) without being recreated on every message change.
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   // ---------- Auto-start on mount ----------
 
@@ -748,35 +805,11 @@ export function Chat() {
             </div>
           </div>
 
-          {/* Desktop: 60/40 split with vertical divider (≥1024px) */}
-          <div className="hidden lg:grid h-full grid-cols-[3fr_2fr]">
-            {/* Agent workspace — left column, ~60% width */}
-            <section className="relative flex flex-col min-h-0 border-r border-outline-variant/20">
-              <div className="flex-shrink-0 px-8 pt-6 pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-primary text-sm filled">
-                      smart_toy
-                    </span>
-                  </div>
-                  <span className="text-[10px] uppercase tracking-[0.18em] font-bold text-on-surface-variant">
-                    Agent workspace
-                  </span>
-                </div>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-8 pb-6">
-                <div className="space-y-4">
-                  {messages.length === 0 && streaming && <InitializingAgent />}
-                  {agentMessages.map(renderMessage)}
-                  {errorMessages.map(renderMessage)}
-                  <AgentThinkingHint streaming={streaming} hasAnyMessages={messages.length > 0} awaiting={awaitingUnanswered} />
-                  <div ref={agentColEndRef} />
-                </div>
-              </div>
-            </section>
-
-            {/* User workspace — right column, ~40% width */}
-            <section className="flex flex-col min-h-0 bg-surface-container-low/20">
+          {/* Desktop: 40/60 split — user LEFT (narrower, reactive), agent RIGHT (wider, content).
+               The user acts on the left, watches the agent think on the right. */}
+          <div className="hidden lg:grid h-full grid-cols-[2fr_3fr]">
+            {/* Your workspace — left column, ~40% width */}
+            <section className="flex flex-col min-h-0 bg-surface-container-low/20 border-r border-outline-variant/20">
               <div className="flex-shrink-0 px-8 pt-6 pb-3">
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 rounded-lg bg-secondary/10 flex items-center justify-center">
@@ -798,6 +831,31 @@ export function Chat() {
                   )}
                   {userMessages.map(renderMessage)}
                   <div ref={userColEndRef} />
+                </div>
+              </div>
+            </section>
+
+            {/* Agent workspace — right column, ~60% width */}
+            <section className="relative flex flex-col min-h-0">
+              <div className="flex-shrink-0 px-8 pt-6 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-primary text-sm filled">
+                      smart_toy
+                    </span>
+                  </div>
+                  <span className="text-[10px] uppercase tracking-[0.18em] font-bold text-on-surface-variant">
+                    Agent workspace
+                  </span>
+                </div>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-8 pb-6">
+                <div className="space-y-4">
+                  {messages.length === 0 && streaming && <InitializingAgent />}
+                  {agentMessages.map(renderMessage)}
+                  {errorMessages.map(renderMessage)}
+                  <AgentThinkingHint streaming={streaming} hasAnyMessages={messages.length > 0} awaiting={awaitingUnanswered} />
+                  <div ref={agentColEndRef} />
                 </div>
               </div>
             </section>
