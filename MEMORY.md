@@ -782,4 +782,163 @@ This doesn't fix bugs, but it converts "white page of death" into "recoverable e
 
 ---
 
+### Decision: Custom App pivot from hand-crafted `manifest.json` to `@rocketlane/rli` CLI
+
+**What happened.** I first built the Rocketlane Custom App as a hand-crafted `.zip` with a `manifest.json`, `index.html` iframe shell, `icon.svg`, and `build.sh` that ran `zip -r ...`. I based the format on what seemed "standard" across extension platforms (Slack apps, GitHub apps, Chrome extensions) and what the PRD referenced. I did not research Rocketlane's actual Custom App format before building. I shipped it as commit `3014b4d` and told Inbaraj it was ready to test.
+
+Inbaraj uploaded the `.zip` to his Rocketlane workspace and got back a clear error from the upload validator:
+
+> **`Invalid zip: rli-dist/deploy.json not found in the uploaded file.`**
+
+**That one error message was the diagnostic that unblocked everything.** It told me exactly what Rocketlane was looking for and where — a file at `rli-dist/deploy.json` at the root of the zip — and immediately revealed that there was a build tool involved (hence the `rli-` prefix). Inbaraj asked me to actually research the Rocketlane Custom App system instead of guessing, which I should have done from the start.
+
+**What the research found:**
+- Rocketlane has an official developer portal: `developer.rocketlane.com`
+- They publish an npm package `@rocketlane/rli` — the official Rocketlane CLI ("RLI")
+- Apps are scaffolded with `rli init my-app-name --template basic`
+- The scaffold produces `index.js` (Node module — the real manifest), `widgets/`, `server-actions/`, `public/`, etc.
+- `index.js` declares widgets like:
+  ```javascript
+  const widgets = [{
+    location: ['project_tab', 'left_nav'],
+    name: 'Plansync',
+    entrypoint: { html: 'widgets/plansync/index.html' },
+    identifier: 'plansync',
+    icon: 'widgets/plansync/icon.svg',
+  }];
+  module.exports = { widgets, version: '0.2.0' };
+  ```
+- `rli build` compiles this into `app.zip` which contains:
+  - `rli-dist/deploy.json` — the auto-generated manifest the upload validator checks
+  - `rli-dist/r.js` + `rli-dist/rli-server.js` — the bundled RLI runtime
+  - `widgets/plansync/index.html` — the actual widget source
+  - `index.js` — the source manifest
+- Four valid widget locations: `left_nav`, `accounts_tab`, `project_tab`, `customer_portal_widget`
+- Widget `entrypoint.html` MUST be a local bundled file — NOT an external URL. BUT the local HTML file is just regular HTML, so it can contain an iframe to an external URL (preserving the live-updates story)
+
+**The rebuild (commit `becaf10`):**
+1. `npm install -g @rocketlane/rli`
+2. `rli init --dir plansync-rl --template basic` in a temp directory
+3. Read the scaffold to understand the structure
+4. Stripped it down to one widget at both `left_nav` and `project_tab`, pointing at a local `widgets/plansync/index.html`
+5. The local HTML is a full-viewport iframe wrapper that loads `https://plansync-tau.vercel.app?embed=1` with a purple-gradient loading placeholder
+6. `rli build` → `app.zip` (199 KB, contains `rli-dist/deploy.json`)
+7. Renamed to `plansync-custom-app.zip` via the `build.sh` wrapper
+8. Inbaraj uploaded → installed cleanly → widget appears in Rocketlane's workspace left nav and project tabs → iframe loads the live Vercel frontend → full agent flow works inside Rocketlane. Confirmed working: **"that worked like magic"**
+
+**Lesson: when an integration has an official CLI/SDK, use it — don't try to reverse-engineer the wire format from secondary sources.** Even a clearly-written PRD or a third-party integration tracker will not capture things like "the zip must contain an auto-generated manifest at `rli-dist/deploy.json`" because that's a build-tool artifact, not a documented API. The CLI knows how to produce the right bytes because the CLI is the source of truth. Cost me 2 hours to do it the wrong way first, then another hour to pivot. Total wasted time: ~2 hours on the first attempt + ~15 minutes during the research phase = **always check for an official SDK FIRST before hand-building any integration package**. Rule of thumb: if you see a specific filename in an error message that you didn't write (`rli-dist/deploy.json`), that's a build-tool output — go find the build tool.
+
+**Lesson: the iframe-inside-widget pattern preserves the live-updates story.** The widget `entrypoint.html` can only point to a local bundled file, which at first felt like a dead end for "live updates from Vercel". But the local HTML can contain an iframe. So the widget is just a 3 KB shell that loads the real app over HTTPS from Vercel. Users get every deploy automatically without the Custom App needing to be rebuilt. The only time we need to rebuild + re-upload the .zip is when we change the manifest, the widget shell itself, or the icon — not when we change the frontend.
+
+**Lesson: empirical debugging beats upfront correctness when the problem space is unknown.** I could have spent hours reading docs upfront trying to get the first `.zip` right. Instead, I shipped a wrong version, got a specific error message back, and that message pointed me straight at the answer. The feedback loop was "upload → error → research → rebuild" and it took one cycle to get a working Custom App. For a domain where the docs are incomplete or hard to find, shipping a bad version to get a good error is sometimes faster than trying to read your way to correctness — provided you're willing to throw away the first attempt.
+
+---
+
+### Decision: harden the system prompt against prose-asking (Commit 2h)
+
+**What happened.** Inbaraj tested the Custom App inside Rocketlane. First session in the iframe went visibly wrong: journey stepper was lagging (stuck on "Upload" while the agent was clearly past validation), no upload widget appeared (he used the paperclip as a workaround), no confirmation card appeared after the plan review tree, and after refreshing, several cards vanished. Clicked "New session" and the fresh session worked flawlessly. Reported both scenarios and asked me to look at Redis for the two sessions.
+
+**Diagnosis via direct Redis inspection.** I wrote two one-off scratch scripts:
+- `/tmp/inspect-sessions.mjs` — SCANs all `session:*:meta` keys, sorts by `createdAt`, prints the top 5 with journey state, pending state, history length, events count, and a tail of recent events
+- `/tmp/diff-sessions.mjs` — pairs two sessionIds and prints their tool call sequences side-by-side
+
+Both scripts use raw fetch calls to the Upstash REST API (read creds from `agent/.env`), no SDK. Output format is plain text, runnable via `node /tmp/inspect-sessions.mjs 5`.
+
+**The bad session** (`web-1776262858915-zdxt4zse`, 11 tool calls):
+1. `update_journey_state` (Connect)
+2. `request_user_approval` (API key)
+3. `get_rocketlane_context`
+4. `request_user_approval` (workspace confirm)
+5. `update_journey_state`
+6. `parse_csv`
+7. `query_artifact`
+8. `create_execution_plan`
+9. `validate_plan` (first attempt — found errors)
+10. `validate_plan` (second attempt — clean)
+11. `display_plan_for_review`
+12. **STOPS HERE** — streams prose: *"Great! Your plan is now displayed. Let me know and I'll ask you a few questions about customer, owner, etc., then create it in Rocketlane. Does the plan structure look good to you?"* → `done` event
+
+**The good session** (`web-1776263028546-97q9krdl`, 24 tool calls):
+- Same first 11 steps
+- Then: `request_user_approval` for plan approval → `update_journey_state` → 5 more `request_user_approval` calls (project name, customer, owner, start date, end date) → `remember` writes → `execute_plan_creation` → final `create_execution_plan` (all done) → final `update_journey_state` → `display_completion_summary`
+
+**Same backend code. Same model. 3 minutes apart.** The bad session skipped 6 `request_user_approval` calls and ended the turn with a prose question. The good session followed the interactive metadata rule correctly.
+
+This is **classic Anthropic non-determinism** — the system prompt has rules about always using `request_user_approval`, but the model occasionally drifts. Especially:
+- When the prompt cache is warm and rules feel "background"
+- After many tool calls in a row (model "switches into prose mode")
+- When the natural continuation of streaming text feels more fluid than a structured tool call
+
+**The fix in `system-prompt.ts`:**
+- New **"HARD RULE — NEVER prose-ask the user for input"** section at the TOP of § 5 Behavioral Rules (right after "Operating principle"). Nine forbidden prose patterns pulled verbatim from the real bad session ("Does the plan look good?", "What should the project be called?", "Are you ready to upload?", etc.). Required `request_user_approval` replacements for the three most common cases with concrete option labels. A pre-turn-end self-check with three questions the agent must ask itself before ending. Explicitly references the bad session as a cautionary story: *"A real session in production hit this exact bug... the user had to click New session and start over. This must never happen again."*
+- New **"HARD RULE — Update the JourneyStepper after EVERY phase transition"** section right after the prose-asking rule. 7 minimum transitions listed. The observed anti-pattern (`parse_csv` → `validate_plan` → `display_plan_for_review` while stepper still says Upload) called out by name. Rule that the FIRST tool call on every resumed turn should usually be `update_journey_state`.
+- New **§ 6 "Re-read the hard rules before every tool call"** at the very END of the prompt, specifically to combat prompt-cache drift. Anthropic caches the whole prompt after turn 1 — by turn 5, the rules at the top feel like "background" to the model. This section forces the model to re-ask itself the two HARD RULE questions at every tool call decision point.
+
+**What I deliberately did NOT add:**
+- **No frontend recovery hint.** Initial plan was to detect "agent ended a turn with a question in prose but no pending approval" and auto-focus the input. Inbaraj pushed back: *"would this cause the agent to an orchestrated app?"* And in the strict sense, yes — the frontend would be detecting a failure mode of the agent and branching behavior on it. Violates invariant #2 (Frontend has zero business logic). Dropped entirely. Lesson: sometimes the cleanest fix for an agent bug is a stronger prompt, not a frontend safety net.
+- **No auto-recovery tool** (a backend stuck-detector that nudges the agent back on track). Too invasive for v1.
+
+**Also shipped in the same commit: UI zoom from 14px → 13px.** Global `font-size: 13px` in `globals.css` cascades through all Tailwind rem units, shrinking the entire UI ~7% (total ~18.75% smaller than the 16px browser default). Inbaraj asked for "further zoom out" after the 14px version still felt in-your-face. Updated the comment in globals.css with the full scale progression (16 → 14 → 13) and noted that `13.5px` is a valid halfway point if 13px ever feels too small.
+
+**Lesson: direct Redis inspection is your best debugging tool for agent drift.** Without the two scratch scripts, I would have been guessing about what the bad session did differently. The side-by-side tool call diff made the missing `request_user_approval` calls jump out immediately. Commit these scripts to the repo (post-submission work: `agent/scripts/inspect-sessions.ts`) — they're the first line of defense any time an agent run misbehaves in a way you can't explain from the user's screenshot.
+
+**Lesson: when you have a reproducible bug in an LLM-driven system, make the prompt FIGHT for correctness.** The model's default behavior was to occasionally drift into prose. Saying "use `request_user_approval`" once wasn't enough. The fix was repetitive, explicit, uses the actual wrong prose patterns as examples, and forces the model to re-read the rules at every tool call. More instruction = more consistent behavior. The token cost is negligible because of prompt caching (~2000 extra tokens cache once, then reused).
+
+**Lesson: refs + state_updates can drift silently across prompt cache windows.** The bad session and the good session had the SAME system prompt (the cache was still warm), but the bad session ran just enough steps for the top rules to feel distant. Pattern: any rule that's "critical but rarely fires" needs a re-read reminder in the prompt, especially if later sections dominate the model's attention. This is the motivation behind § 6.
+
+---
+
+### Decision: lightweight admin portal on a separate branch (Commit `e140986`)
+
+**What happened.** After the system prompt hardening shipped, Inbaraj asked for two things we'd previously discussed and deferred: (1) a lightweight admin portal for observability + runtime agent config, and (2) an interrupt/stop mechanism to cancel a running agent. We scoped both together, then he decided to drop interrupt/stop ("no need for interruption -- lets cancel it for now") and ship just the admin portal. Also asked specifically for: avg cost/run stat card, a Tool Toggle UI that showcases all 22 tools, cost estimator if "easy" (yes easy via Anthropic's `final.usage` response), a login form instead of Basic Auth, and most importantly, a separate branch to avoid breaking prod.
+
+**Scope boundaries agreed:**
+- **In scope:** HMAC-signed cookie auth (login form, not Basic Auth), runtime config editor (model / max_tokens / max_retries), 22-tool grid with toggles, observability stats (runs, success, active, errors, cost today, avg cost/run), recent sessions table with filters, daily usage by model.
+- **Out of scope:** Interrupt/stop (dropped by user). Live SSE subscription to running sessions. Session detail drill-down with full history viewer. Tool toggle persistence at read-only first — we did implement the full backend wiring. Cost estimator as time-series graph (just totals). User management / multi-tenant view.
+
+**Architecture:**
+
+Backend (`agent/src/admin/*`):
+- `auth.ts` — HMAC-SHA-256 signed admin token, 2-hour lifetime, signed with the existing `ENCRYPTION_KEY` (no new secret needed). Claim: `{role: "admin", iat, exp, jti}`. `verifyAdminCredentials` does constant-time comparison against `ADMIN_USERNAME` / `ADMIN_PASSWORD` env vars. `isAdminPortalConfigured` returns false if either env var is missing → fail-closed.
+- `middleware.ts` — `requireAdminAuth` Express middleware. Parses the `plansync_admin_token` cookie manually (no `cookie-parser` dep — saved a package for 10 lines of code). Verifies HMAC + expiry. Returns 401 with clear error codes. Exports `buildAdminCookieHeader` / `buildClearAdminCookieHeader` with `HttpOnly; Secure; SameSite=None` flags.
+- `config.ts` — Redis-backed runtime config with env fallback. 4 keys: `admin:config:model`, `admin:config:maxTokens`, `admin:config:maxRetries`, `admin:config:disabledTools`. Precedence on read: Redis override → env var → hardcoded default. `setDisabledTools` silently filters out `request_user_approval` — the only blocking tool. `getAdminConfigSnapshot` returns full state with `hasOverride` flags for the dashboard.
+- `usage.ts` — Token usage + cost estimation. Called fire-and-forget from `loop.ts` after every Anthropic response. Two stores: per-session (`session:{id}:usage`) + daily aggregate (`admin:usage:daily:{date}` with per-model breakdown). Pricing table for Haiku/Sonnet/Opus 4.5 at approximate public pricing. Prompt cache reads ~10% of input cost, writes ~125%. `estimateCostUsd` is a pure function for cost computation.
+- `stats.ts` — Aggregate dashboard stats from SCANning session meta keys. Derives session outcome from the event log (hasCompletionSummary? hasError? lastEventType?) rather than a status field. Returns `computeDashboardStats()` for the 6 stat cards + `listRecentSessions()` with date range + status + search filters.
+- `tools-catalog.ts` — Display metadata for all 22 tools organized into 7 categories. `request_user_approval` marked `canDisable: false` (lock icon in UI). `web_search` marked `isServerTool: true` (cloud icon).
+
+Backend (`agent/src/agent/loop.ts`):
+- Removed the boot-time `ANTHROPIC_MODEL` check — loop now resolves model FRESH at the start of every turn via `getEffectiveModel()` (Redis → env var → error). This lets Railway boot even without the env var and the admin can set the model live.
+- Reads `getEffectiveMaxTokens()`, `getEffectiveMaxRetries()`, and `getDisabledTools()` at the start of every turn.
+- Filters `TOOL_SCHEMAS` against the disabled set before applying `cache_control` to the last enabled tool. Admin changes apply on the NEXT turn of any running session.
+- Calls `recordUsage(sessionId, model, final.usage)` fire-and-forget after each successful response.
+
+Backend (`agent/src/index.ts`):
+- 8 new routes under `/admin/*`: login, logout, me (auth probe), dashboard, tools, config GET/POST, config/disabled-tools POST.
+- All protected routes use `requireAdminAuth`.
+
+Frontend (`frontend/app/admin/*`):
+- `/admin/login` — standalone login form with Plansync brand (purple gradient bolt, "Admin Console" label). Calls `/admin/me` on mount — if already authenticated, auto-redirects to `/admin`.
+- `/admin` — single-page dashboard with 6 stat cards (runs, success rate, active, errors, est. cost today, avg cost/run), runtime config editor, 22-tool grid with toggle functionality (lock icon on `request_user_approval`), recent sessions table with filters (date range / status / search), daily usage by model breakdown.
+- `frontend/lib/admin-client.ts` — typed fetch helpers. Every request carries `credentials: 'include'` for the HttpOnly cookie.
+
+**Why the separate branch.** Unlike the Custom App (which lives in its own `custom-app/` directory and has zero impact on the live frontend/backend), the admin portal touches `agent/src/agent/loop.ts` — the heart of the agent. If the Redis config read has a bug, every session breaks. A branch gives us real isolation: Inbaraj can verify the admin portal end-to-end on a separate Railway preview deployment before we merge to main.
+
+**The deployment story.** Railway auto-deploys from `main` by default. To test the `admin-portal` branch without touching prod, Inbaraj needs to either (a) switch his existing Railway service's watched branch (risky — reverts if something goes wrong), or (b) create a SECOND Railway service pointing at the `admin-portal` branch with its own URL (clean isolation — we went with this). Both services share the same Upstash Redis on purpose so the dashboard shows real session data. The frontend side can either use a Vercel preview URL (with `NEXT_PUBLIC_AGENT_URL` overridden for preview environment) or run locally via `NEXT_PUBLIC_AGENT_URL=<preview railway url> npm run dev`.
+
+**Safety rails:**
+- `isAdminPortalConfigured()` fail-closed if env vars are missing
+- `setDisabledTools` silently filters out `request_user_approval`
+- All `loop.ts` config reads fall back to env vars if Redis is unreachable
+- `recordUsage` is fire-and-forget — Redis write failures never crash the agent loop
+- HMAC uses the existing `ENCRYPTION_KEY` (no new secret to manage)
+- Cookie is `HttpOnly; Secure; SameSite=None` — XSS-proof and cross-origin compatible
+
+**Lesson: feature branches are the right call when a feature touches the critical path.** The Custom App didn't need a branch because it lived in its own directory. The admin portal touches `loop.ts`, which every session uses. Even though the new code has safe fallbacks, a bug in the Redis read path could break every running session. A branch lets us verify end-to-end before committing to prod — 2 minutes of git overhead saves hours of rollback work if something's wrong.
+
+**Lesson: shared Redis between prod and preview is a feature, not a bug, for observability tooling.** The admin dashboard's value is showing REAL data (runs today, success rate, recent sessions). If the preview uses a fresh Redis, the dashboard is empty and we can't verify the stats are correct. Shared Redis means the dashboard on preview reflects actual production state. The trade-off is that admin config changes made on preview immediately affect prod (both services read the same Redis keys) — but since Inbaraj is the only admin, that's a feature too: test the model change on preview, prod picks it up automatically, no second step needed.
+
+**Lesson: reuse the existing secret.** I initially considered adding a new `ADMIN_JWT_SECRET` env var for signing admin tokens. Unnecessary — the existing `ENCRYPTION_KEY` is already required for AES-GCM of the Rocketlane API key, it's already at the right security level, and adding a second secret just adds another rotation to think about. One secret per trust boundary.
+
+---
+
 ## Session 5+ — (to be filled in as sessions happen)

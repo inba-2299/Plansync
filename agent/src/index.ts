@@ -61,8 +61,19 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   if (isAllowed) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
+    // Required for the admin portal's HttpOnly cookie to survive
+    // cross-origin fetches. Without this, the browser silently drops
+    // the Set-Cookie response header on /admin/login AND refuses to
+    // attach the existing cookie on subsequent credentialed requests.
+    // Must be a literal "true" (not "True"). Must be set together
+    // with a specific Access-Control-Allow-Origin (not "*") for
+    // credentials to work — which is what we're doing above.
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
-  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+  // DELETE is for the /session/:id/events endpoint from Commit 2g
+  // (used by the "New session" button flow). OPTIONS preflight is
+  // always needed for non-simple requests.
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {

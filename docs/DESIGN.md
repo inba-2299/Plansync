@@ -50,6 +50,61 @@ The initial Commit 2g replay correctly reconstructed the agent workspace but re-
 **D22 (NEW) — Application-crash error boundary.**
 Commit 2f discovered that any unhandled render error in any agent-emitted card would blanket-crash the app with "Application error: a client-side exception has occurred" (the production Next.js minified error) — white page, no recovery path. Root cause was a `PlanReviewTree.dependsOn.length` on an item where `dependsOn` was undefined (Haiku is lax about optional fields; the backend defensively checked `Array.isArray(i.dependsOn)` in three places, proving the field can be missing). Two-part fix: (1) **harden the specific site** with a `normalizePlanItem()` function that coerces every raw field at the Map-building boundary, plus optional-chain `.length` accesses downstream; (2) **wrap `Chat` in a class-based `ErrorBoundary`** that catches any render crash anywhere in the tree and renders a recoverable "Something went wrong" card with error details and Reset / Full-reload buttons. Second line of defense — doesn't fix bugs but converts white-page-of-death into recoverable error card. **Lesson baked into the design: agent-driven UIs are by definition dynamic, so a top-level error boundary is mandatory, not optional.**
 
+**D23 (NEW) — Custom App built via `@rocketlane/rli` CLI, not hand-crafted manifest.**
+First attempt (commit `3014b4d`) shipped a hand-crafted `manifest.json` + `index.html` iframe shell + `icon.svg` + a `build.sh` that ran `zip -r ...`. Rocketlane's upload validator rejected it with: `Invalid zip: rli-dist/deploy.json not found in the uploaded file.` That error message revealed that Rocketlane Custom Apps have a CLI-based build system (`@rocketlane/rli`) that produces a specific directory structure including an auto-generated `rli-dist/deploy.json`. Rebuilt from scratch as commit `becaf10`: `rli init` scaffold → stripped down to one widget at both `left_nav` and `project_tab` surfaces → widget HTML is a full-viewport iframe wrapper loading `https://plansync-tau.vercel.app?embed=1` with a loading placeholder → `rli build` produces `app.zip` containing `rli-dist/deploy.json` + bundled widget source files. Installed and verified working inside `inbarajb.rocketlane.com`. **The iframe-inside-widget pattern preserves the live-updates story**: Vercel deploys are picked up automatically; the `.zip` only needs to be rebuilt if the manifest, widget shell, or icon changes. **Lesson: when an integration has an official CLI/SDK, use it — don't try to reverse-engineer the wire format.** The earlier attempt wasted ~2 hours that could have been avoided by checking developer.rocketlane.com first.
+
+**D24 (NEW) — Hard rules in the system prompt against prose-asking + journey lag.**
+Commit 2h. A real production session showed Anthropic drifting: after rendering the plan review tree, the agent STREAMED PROSE ("Great! Does the plan look good to you? Let me know...") and ended its turn with `done` — no `request_user_approval`, no metadata gathering, no actionable card for the user to click. Diagnosed by side-by-side comparison of the bad session and a clean session 3 minutes later using raw Upstash REST calls (scratch scripts `/tmp/inspect-sessions.mjs` and `/tmp/diff-sessions.mjs`). Same backend code, same model. Classic Anthropic non-determinism — the rules at the top of the cached system prompt had started to feel like "background" to the model by turn 11.
+
+Fix: two new **HARD RULE** sections at the top of § 5 Behavioral Rules, plus a new § 6 "Re-read the hard rules before every tool call" reminder at the end of the prompt. The HARD RULE sections:
+1. **"NEVER prose-ask the user for input"** — 9 forbidden prose patterns (all pulled verbatim from the bad session) with required `request_user_approval` replacements. Includes a pre-turn-end self-check and references the actual bad session as a cautionary story.
+2. **"Update the JourneyStepper after EVERY phase transition"** — 7 minimum transitions explicitly listed, the observed anti-pattern (`parse_csv` → `validate_plan` → `display_plan_for_review` while stepper still says "Upload") called out by name.
+
+**Lesson: prompt caching is a double-edged sword.** It saves tokens but makes the top of the prompt feel distant from the model's attention by later turns. Mitigation: put the most-critical rules at the TOP of the prompt (they get cached), reiterate them at the BOTTOM (they stay in "recent context" window), and explicitly instruct the model to re-read them at every tool call decision point. The combined effect pays for itself — the rules consistently fire at the moment they matter.
+
+**Lesson: direct Redis inspection is the fastest way to diagnose agent drift.** Without the two scratch scripts, I would have been guessing what the bad session did differently. The tool-call-diff format made the missing `request_user_approval` calls jump out immediately. Post-submission work: commit these scripts to `agent/scripts/inspect-sessions.ts` and `agent/scripts/diff-sessions.ts` with a short scripts README.
+
+Also in Commit 2h: UI base font from 14px → 13px. Total ~18.75% smaller than browser default. Dashboard-like density without being unreadable.
+
+### AD-13: Lightweight admin portal (Session 5 addendum)
+
+**Decision.** Build an operator admin portal at `/admin` on the same Vercel frontend with backend routes at `/admin/*` on the existing Railway backend. Auth via a custom login form that issues an HttpOnly HMAC-signed cookie (not Basic Auth). Scope: observability (6 stat cards with filters), runtime config editor (model / max_tokens / max_retries), 22-tool grid with toggle functionality, recent sessions table with date/status/search filters, daily usage breakdown by model. Lives on an `admin-portal` git branch until verified end-to-end against a separate Railway preview deployment.
+
+**Architecture:**
+- `agent/src/admin/auth.ts` — HMAC-SHA-256 token minting/verification reusing `ENCRYPTION_KEY`. 2-hour lifetime. Constant-time credential comparison.
+- `agent/src/admin/middleware.ts` — `requireAdminAuth` Express middleware. Manual Cookie header parsing (no `cookie-parser` dep). Fail-closed if env vars missing.
+- `agent/src/admin/config.ts` — Redis-backed runtime config with env fallback. Four keys: `admin:config:model`, `admin:config:maxTokens`, `admin:config:maxRetries`, `admin:config:disabledTools`. Precedence on read: Redis → env → hardcoded default. `setDisabledTools` silently filters out `request_user_approval` as a safety rail.
+- `agent/src/admin/usage.ts` — Token usage + cost estimation from Anthropic's `final.usage`. Two stores: per-session + daily aggregate per model. Pricing table for Haiku/Sonnet/Opus 4.5 with comments explaining it's approximate.
+- `agent/src/admin/stats.ts` — SCAN-based aggregation from session:*:meta keys + event log inspection to derive session outcomes. Returns dashboard stats + filtered recent session rows.
+- `agent/src/admin/tools-catalog.ts` — Display metadata for all 22 tools in 7 categories. `canDisable: false` on `request_user_approval` (lock icon in UI).
+- `agent/src/agent/loop.ts` — Modified to read config FRESH at the start of every turn. Filters `TOOL_SCHEMAS` against the disabled set before applying cache_control. Calls `recordUsage` fire-and-forget after each `stream.finalMessage()`.
+- `agent/src/index.ts` — 8 new routes under `/admin/*` (login, logout, me, dashboard, tools, config GET/POST, config/disabled-tools).
+- `frontend/app/admin/login/page.tsx` — Standalone login form with Plansync brand.
+- `frontend/app/admin/page.tsx` — Single-page dashboard. Inline sub-components (StatCard, StatusBadge, SegmentedControl, SectionHeader) for fast iteration.
+- `frontend/lib/admin-client.ts` — Typed fetch helpers with `credentials: 'include'`.
+
+**Alternatives considered:**
+- **Basic Auth.** Simpler (5-line middleware) but less secure (password sent on every request, no logout, no expiration). Rejected because Inbaraj specifically asked for a login form.
+- **On main, not a branch.** Rejected because the loop.ts changes touch the critical path — if the Redis read logic has a bug, every session breaks. Branch gives real isolation.
+- **Separate Upstash database for preview.** Rejected because the admin dashboard's value comes from showing REAL session data. Shared Redis on purpose.
+- **Session detail drill-down with full history viewer.** Deferred — too much data to render cleanly for v1.
+- **Live SSE subscription to running sessions.** Deferred — would need a separate admin SSE endpoint + subscription management.
+- **Interrupt/stop running agent.** Inbaraj considered it, then dropped it ("no need for interruption"). Input-disable covers the common case of not sending another message mid-stream.
+
+**Why this.** The admin portal is a real operator tool, not a gimmick. During Session 4 I repeatedly had to write scratch scripts to inspect Redis sessions — that's exactly the pain the dashboard exists to solve. Making model selection adjustable at runtime (Redis override) removes "redeploy Railway to flip the model" as a pain point. The tool grid is as much about storytelling as utility — showing all 22 tools with descriptions at a glance is strong evidence of the agent's design.
+
+**Trade-offs:**
+- Admin config changes persist in Redis — they stick across Railway redeploys until manually cleared
+- Shared Redis means preview admin writes affect prod (acceptable because Inbaraj is the only admin)
+- Tool toggling affects all running sessions at the start of their next turn (a running session could see the tool disappear mid-run — uncommon and self-correcting on the next turn)
+- No in-UI session detail drill-down — the dashboard shows enough metadata to identify problematic sessions, and the Redis inspection scripts cover deep-dive debugging
+
+**Env vars required** (set via Railway dashboard):
+- `ADMIN_USERNAME` (operator picks)
+- `ADMIN_PASSWORD` (generate via `openssl rand -base64 24`)
+
+Neither is required for the core agent to function — if they're missing, `/admin/*` routes return 503 and the rest of the app is unaffected.
+
 ### Decisions REJECTED in Session 4
 
 **R3 — TOON format.** Discussed as an alternative to JSON for ~50% token savings on plan data. Rejected because:
