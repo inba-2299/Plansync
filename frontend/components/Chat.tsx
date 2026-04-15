@@ -173,6 +173,12 @@ export function Chat() {
   const [inputValue, setInputValue] = useState('');
   const [uploading, setUploading] = useState(false);
 
+  // The execution plan is collapsed by default — it's pinned at the top
+  // of the agent column (sticky) and would eat too much vertical space
+  // if always fully expanded with 8+ steps. Users click the compact bar
+  // to expand the full plan, click again to re-collapse.
+  const [executionPlanCollapsed, setExecutionPlanCollapsed] = useState(true);
+
   // For text_delta accumulation we need to know which reasoning bubble is "current"
   const currentReasoningIdRef = useRef<string | null>(null);
   const currentReasoningStartedAtRef = useRef<number | null>(null);
@@ -770,24 +776,6 @@ export function Chat() {
         {journey.length > 0 && <JourneyStepper steps={journey} />}
       </header>
 
-      {/* ---------- Pinned panels (full width, glass backdrop) ---------- */}
-      {pinnedMessages.length > 0 && (
-        <div className="flex-shrink-0 border-b border-outline-variant/20 bg-surface-container-low/40 backdrop-blur-sm">
-          <div className="max-w-screen-2xl mx-auto px-6 py-4 space-y-3">
-            {pinnedMessages.map((m) => (
-              <DisplayComponentRenderer
-                key={m.id}
-                component={(m as Extract<UiMessage, { kind: 'display' }>).component}
-                props={(m as Extract<UiMessage, { kind: 'display' }>).props}
-                sessionId={sessionId}
-                onApiKeySubmit={(apiKey) => handleApiKeySubmit(apiKey)}
-                onFileUploaded={handleFileUploaded}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* ---------- Main split area ---------- */}
       {/* min-h-0 is critical so children with overflow-y-auto actually scroll
           inside a flex container. Without it the children grow to content
@@ -796,6 +784,20 @@ export function Chat() {
         <div className="max-w-screen-2xl mx-auto h-full">
           {/* Mobile: single chronological column (<1024px) */}
           <div className="lg:hidden h-full overflow-y-auto custom-scrollbar">
+            {/* Sticky pinned section at the top of the mobile scroll container */}
+            {pinnedMessages.length > 0 && (
+              <div className="sticky top-0 z-10 bg-surface/95 backdrop-blur-sm border-b border-outline-variant/20">
+                <div className="px-4 sm:px-6 py-3 space-y-2">
+                  <PinnedSection
+                    pinnedMessages={pinnedMessages}
+                    executionPlanCollapsed={executionPlanCollapsed}
+                    onToggleExecutionPlan={() =>
+                      setExecutionPlanCollapsed((v) => !v)
+                    }
+                  />
+                </div>
+              </div>
+            )}
             <div className="px-4 sm:px-6 py-6 space-y-4">
               {messages.length === 0 && streaming && <InitializingAgent />}
               {mobileMessages.map(renderMessage)}
@@ -849,8 +851,25 @@ export function Chat() {
                   </span>
                 </div>
               </div>
-              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-8 pb-6">
-                <div className="space-y-4">
+              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+                {/* Sticky pinned section — stays at top of the agent column
+                    as its content scrolls beneath it. Execution plan is
+                    collapsible so it doesn't eat 500px of vertical space
+                    with 8+ steps. */}
+                {pinnedMessages.length > 0 && (
+                  <div className="sticky top-0 z-10 bg-surface/95 backdrop-blur-sm border-b border-outline-variant/20">
+                    <div className="px-8 py-3 space-y-2">
+                      <PinnedSection
+                        pinnedMessages={pinnedMessages}
+                        executionPlanCollapsed={executionPlanCollapsed}
+                        onToggleExecutionPlan={() =>
+                          setExecutionPlanCollapsed((v) => !v)
+                        }
+                      />
+                    </div>
+                  </div>
+                )}
+                <div className="px-8 pb-6 pt-4 space-y-4">
                   {messages.length === 0 && streaming && <InitializingAgent />}
                   {agentMessages.map(renderMessage)}
                   {errorMessages.map(renderMessage)}
@@ -987,6 +1006,170 @@ function InitializingAgent() {
         hourglass_empty
       </span>
       Initializing agent…
+    </div>
+  );
+}
+
+/**
+ * PinnedSection — renders the sticky-top cards that live INSIDE the agent
+ * column (and at the top of the mobile single-column timeline).
+ *
+ * Two types of pinned cards are supported:
+ *   - ExecutionPlanCard: wrapped in a collapsible shell. Default collapsed
+ *     (shows a one-line summary bar with current step + progress). Click
+ *     to expand the full card.
+ *   - ProgressFeed: rendered directly (it's compact enough on its own).
+ *
+ * Putting this inside the agent column instead of full-width at the top
+ * is deliberate — an 8-step execution plan is ~500px tall, which would
+ * eat most of the viewport and squash the agent/user workspaces into
+ * unusable slivers. By pinning inside the column + making the plan
+ * collapsible, the user column stays completely clean and the agent
+ * column gets its full height back.
+ */
+function PinnedSection({
+  pinnedMessages,
+  executionPlanCollapsed,
+  onToggleExecutionPlan,
+}: {
+  pinnedMessages: UiMessage[];
+  executionPlanCollapsed: boolean;
+  onToggleExecutionPlan: () => void;
+}) {
+  return (
+    <>
+      {pinnedMessages.map((m) => {
+        if (m.kind !== 'display') return null;
+
+        if (m.component === 'ExecutionPlanCard') {
+          return (
+            <CompactableExecutionPlan
+              key={m.id}
+              plan={m.props}
+              collapsed={executionPlanCollapsed}
+              onToggle={onToggleExecutionPlan}
+            />
+          );
+        }
+
+        if (m.component === 'ProgressFeed') {
+          return (
+            <ProgressFeed
+              key={m.id}
+              completed={Number(m.props.completed ?? 0)}
+              total={Number(m.props.total ?? 0)}
+              percent={Number(m.props.percent ?? 0)}
+              currentPhase={m.props.currentPhase as string | undefined}
+              detail={m.props.detail as string | undefined}
+            />
+          );
+        }
+
+        return null;
+      })}
+    </>
+  );
+}
+
+/**
+ * CompactableExecutionPlan — a wrapper around ExecutionPlanCard that
+ * alternates between a one-line compact summary bar and the full card.
+ *
+ * Compact (default):
+ *   [📋] EXECUTION PLAN · Step 3 of 8 · Validating plan integrity  [▼]
+ *
+ * Expanded:
+ *   [▲ Collapse]
+ *   ┌──────────────────────────────────────┐
+ *   │ <full ExecutionPlanCard>             │
+ *   └──────────────────────────────────────┘
+ *
+ * The compact summary computes "current step" as: the first step with
+ * status 'in_progress', falling back to (done count + 1) so we show
+ * the next step if nothing is actively in progress.
+ */
+function CompactableExecutionPlan({
+  plan,
+  collapsed,
+  onToggle,
+}: {
+  plan: Record<string, unknown>;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  const steps =
+    (plan.steps as Array<{
+      id: string;
+      label: string;
+      status?: string;
+      notes?: string;
+    }>) ?? [];
+  const totalSteps = steps.length;
+  const inProgressIdx = steps.findIndex((s) => s.status === 'in_progress');
+  const doneCount = steps.filter((s) => s.status === 'done').length;
+  const allDone = totalSteps > 0 && doneCount === totalSteps;
+
+  // Prefer in_progress. If none in progress, show the step after the last done
+  // (or the last step if all done).
+  const displayIdx =
+    inProgressIdx >= 0
+      ? inProgressIdx
+      : allDone
+      ? totalSteps - 1
+      : Math.min(doneCount, totalSteps - 1);
+  const currentStep = steps[displayIdx];
+  const stepNumber =
+    inProgressIdx >= 0 ? inProgressIdx + 1 : allDone ? totalSteps : doneCount + 1;
+
+  if (collapsed) {
+    return (
+      <button
+        onClick={onToggle}
+        className={cn(
+          'w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-left transition-all',
+          'bg-surface-container-low/70 border border-outline-variant/30',
+          'hover:bg-surface-container hover:border-primary/30'
+        )}
+      >
+        <span className="material-symbols-outlined text-primary text-base flex-shrink-0">
+          checklist
+        </span>
+        <span className="text-[10px] uppercase tracking-[0.15em] font-bold text-primary flex-shrink-0">
+          Execution plan
+        </span>
+        <span className="text-outline-variant flex-shrink-0">·</span>
+        <span className="text-sm font-semibold text-on-surface tabular-nums flex-shrink-0">
+          {allDone ? `All ${totalSteps} steps done` : `Step ${stepNumber} of ${totalSteps}`}
+        </span>
+        {currentStep && !allDone && (
+          <>
+            <span className="text-outline-variant flex-shrink-0">·</span>
+            <span className="text-sm text-on-surface-variant truncate flex-1 min-w-0">
+              {currentStep.label}
+            </span>
+          </>
+        )}
+        {allDone && <div className="flex-1" />}
+        <span className="material-symbols-outlined text-on-surface-variant text-base flex-shrink-0">
+          expand_more
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <button
+        onClick={onToggle}
+        className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-primary hover:text-primary-container transition-colors rounded-lg hover:bg-primary/5"
+      >
+        <span className="material-symbols-outlined text-sm">expand_less</span>
+        Collapse plan
+      </button>
+      <ExecutionPlanCard
+        goal={String(plan.goal ?? '')}
+        steps={steps}
+      />
     </div>
   );
 }
