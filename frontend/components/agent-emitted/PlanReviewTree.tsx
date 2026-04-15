@@ -32,6 +32,42 @@ interface PlanReviewTreeProps {
 }
 
 /**
+ * Normalize a raw plan item coming from the agent into a guaranteed-shape
+ * PlanItem. The backend validator + display tool both defensively check
+ * `Array.isArray(i.dependsOn)` — which proves `dependsOn` can be missing
+ * in practice (Haiku is especially lax about emitting empty arrays). If
+ * we don't normalize at the boundary, code like `item.dependsOn.length`
+ * crashes the entire chat with a blank-page "Application error".
+ *
+ * Every field that is later read unconditionally is coerced to a safe
+ * default here. Any field that is optional-chained in the renderer can
+ * remain undefined.
+ */
+function normalizePlanItem(raw: unknown): PlanItem {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  return {
+    id: typeof r.id === 'string' ? r.id : `item-${Math.random().toString(36).slice(2, 8)}`,
+    name: typeof r.name === 'string' ? r.name : '(unnamed)',
+    type:
+      r.type === 'phase' || r.type === 'task' || r.type === 'subtask' || r.type === 'milestone'
+        ? r.type
+        : 'task',
+    parentId: typeof r.parentId === 'string' ? r.parentId : null,
+    depth: typeof r.depth === 'number' ? r.depth : 0,
+    startDate: typeof r.startDate === 'string' ? r.startDate : null,
+    dueDate: typeof r.dueDate === 'string' ? r.dueDate : null,
+    effortInMinutes: typeof r.effortInMinutes === 'number' ? r.effortInMinutes : null,
+    description: typeof r.description === 'string' ? r.description : null,
+    status:
+      r.status === 1 || r.status === 2 || r.status === 3 ? (r.status as 1 | 2 | 3) : null,
+    progress: typeof r.progress === 'number' ? r.progress : null,
+    milestoneCandidate: Boolean(r.milestoneCandidate),
+    milestoneReason: typeof r.milestoneReason === 'string' ? r.milestoneReason : null,
+    dependsOn: Array.isArray(r.dependsOn) ? (r.dependsOn as string[]) : [],
+  };
+}
+
+/**
  * PlanReviewTree — renders the structured plan as a collapsible tree.
  *
  * Phases at the top level. Each phase expands to show its children
@@ -51,9 +87,13 @@ export function PlanReviewTree({ plan, stats }: PlanReviewTreeProps) {
     );
   }
 
-  // Build child map: parentId → children
+  // Build child map: parentId → children. Normalize every item at the
+  // boundary so downstream renderers never have to null-check fields
+  // individually. Fixes the white-page "Application error" crash that
+  // fires when a Haiku-generated plan has items missing `dependsOn`.
   const childrenByParent = new Map<string | null, PlanItem[]>();
-  for (const item of safePlan.items) {
+  for (const raw of safePlan.items) {
+    const item = normalizePlanItem(raw);
     const key = item.parentId ?? null;
     if (!childrenByParent.has(key)) childrenByParent.set(key, []);
     childrenByParent.get(key)!.push(item);
@@ -234,14 +274,14 @@ function PlanNode({ item, childrenByParent, defaultExpanded = false }: PlanNodeP
           >
             {item.name}
           </div>
-          {(item.startDate || item.dueDate || item.dependsOn.length > 0) && (
+          {(item.startDate || item.dueDate || (item.dependsOn?.length ?? 0) > 0) && (
             <div className="flex flex-wrap items-center gap-1.5 mt-1">
               {item.startDate && item.dueDate && (
                 <span className="text-[10px] text-on-surface-variant">
                   {item.startDate} → {item.dueDate}
                 </span>
               )}
-              {item.dependsOn.length > 0 && (
+              {(item.dependsOn?.length ?? 0) > 0 && (
                 <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-info/10 text-info">
                   {item.dependsOn.length} dep
                 </span>

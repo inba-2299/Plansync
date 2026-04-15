@@ -343,14 +343,43 @@ export function Chat() {
             );
             currentReasoningIdRef.current = null;
           }
-          if (event.payload) {
+          // Defensive shape check: backend loop.ts emits `payload: payload ?? null`,
+          // so `event.payload` can legally be `null`. We also harden against
+          // malformed shapes (missing question, non-array options) to avoid
+          // crashing the chat render if a tool authors something weird.
+          const rawPayload = event.payload as
+            | {
+                question?: unknown;
+                options?: unknown;
+                context?: unknown;
+              }
+            | null
+            | undefined;
+          if (rawPayload && typeof rawPayload === 'object') {
+            const question =
+              typeof rawPayload.question === 'string'
+                ? rawPayload.question
+                : '(agent requested input — no question provided)';
+            const options = Array.isArray(rawPayload.options)
+              ? (rawPayload.options as Array<{
+                  label: string;
+                  value: string;
+                  description?: string;
+                }>).filter(
+                  (o) =>
+                    o && typeof o.label === 'string' && typeof o.value === 'string'
+                )
+              : [];
+            const context =
+              typeof rawPayload.context === 'string' ? rawPayload.context : null;
+
             addMessage({
               kind: 'awaiting',
               id: `await-${event.toolUseId}`,
               toolUseId: event.toolUseId,
-              question: event.payload.question,
-              options: event.payload.options,
-              context: event.payload.context ?? null,
+              question,
+              options,
+              context,
               answered: false,
               createdAt: Date.now(),
             });

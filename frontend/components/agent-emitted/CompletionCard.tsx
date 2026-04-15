@@ -7,6 +7,13 @@ interface CompletionCardProps {
   stats?: Record<string, number>;
   projectUrl?: string;
   projectName?: string;
+  /**
+   * projectId is accepted for forward-compat but intentionally ignored —
+   * we only show the "View in Rocketlane" button when the agent passes a
+   * fully-qualified `projectUrl`, because Rocketlane URLs are always
+   * workspace-scoped (`{workspace}.rocketlane.com/projects/{id}`) and we
+   * cannot synthesize the workspace from the ID alone.
+   */
   projectId?: number;
 }
 
@@ -21,7 +28,6 @@ export function CompletionCard({
   stats,
   projectUrl,
   projectName,
-  projectId,
 }: CompletionCardProps) {
   const phasesCreated = Number(stats?.phasesCreated ?? 0);
   const tasksCreated = Number(stats?.tasksCreated ?? 0);
@@ -35,11 +41,17 @@ export function CompletionCard({
   const failed = Number(stats?.failed ?? 0);
   const durationSeconds = stats?.durationSeconds;
 
+  // Only show the "View in Rocketlane" button when the agent has given us
+  // a fully-qualified URL. We used to fall back to
+  // `https://app.rocketlane.com/projects/${projectId}` when only `projectId`
+  // was provided — but `app.rocketlane.com` is not a real tenant, Rocketlane
+  // URLs are always workspace-scoped (`{workspace}.rocketlane.com/projects/{id}`).
+  // The system prompt now instructs the agent to always emit a fully-qualified
+  // URL; this removes the broken fallback so users never see a dead link.
   const finalUrl =
-    projectUrl ??
-    (projectId
-      ? `https://app.rocketlane.com/projects/${projectId}`
-      : undefined);
+    typeof projectUrl === 'string' && projectUrl.trim().length > 0
+      ? projectUrl
+      : undefined;
 
   return (
     <motion.div
