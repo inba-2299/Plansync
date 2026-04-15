@@ -64,34 +64,40 @@
 
 ## What's next (Session 4)
 
-**Goal**: Ship the 5 product decisions discussed this morning, then Custom App + BRD + submit.
+**Goal**: Ship everything that makes the submission complete, then fit in as many product additions as time allows.
 
-### Priority 1 — Duplicate detection (30 min)
-Add a rule to the system prompt so that when `get_rocketlane_context` returns the existing projects list, the agent checks for a duplicate project name. If found, the agent calls `request_user_approval` with options like "Overwrite", "Create new", "Abort". No new tool needed — this is purely a system prompt addition.
+**Deadline**: 2026-04-16 (tomorrow). Session 4 has approximately one working day.
 
-### Priority 2 — Admin portal `/admin` (2-3 hours)
-HTTP Basic Auth protected route. This is a "show-off" feature — just for us to see sessions and tweak settings, not for end users. Scope:
-- HTTP Basic Auth middleware (credentials from env vars)
-- Model selection (swap `claude-sonnet-4-5` for another model per-session)
-- Settings: session TTL, max turns, rate limit overrides
-- Session list with artifact previews
-- Admin URL: `https://plansync-production.up.railway.app/admin` (or separate subdomain)
+Session 4 is organized into two buckets. Must-ship items come first because they are submission blockers — if Session 4 runs out of time, anything in the stretch bucket gets pushed to post-submission.
 
-### Priority 3 — Lessons feedback loop + knowledge base (2 hours)
-The agent doesn't get smarter between sessions right now. Add a background "lessons" file that the agent reads at session start and writes to on notable events:
-- User corrects the agent's column mapping → the agent records "user's CSVs typically have `task_name` in column 3" as a lesson
-- Agent encounters an API field rename → records the fix from `web_search` as a permanent lesson (not just session-scoped `remember`)
-- Admin can review + approve lessons before they get merged into the knowledge base
-- New tool: `record_lesson(observation, lesson, scope: "session"|"global")`
-- System prompt section: "Prior lessons learned from previous sessions" populated from the knowledge base at session start
+---
 
-### Priority 4 — Create or update flow (1.5 hours)
-Right now the agent only creates NEW projects. Users may want to update existing ones (add a phase to an in-flight project, sync a revised plan). Scope:
-- 5 new Rocketlane update tools: `update_project`, `update_phase`, `update_task`, `delete_task`, `move_task_to_phase`
-- Diff view: when duplicate detected + user chooses "Update existing", agent computes a diff between current state and new plan, renders a diff card, asks for approval before applying
-- System prompt addition: "If existing project detected AND user chooses update flow, compute diff → show → ask before mutating"
+### Must-ship (submission blockers — do these first)
 
-### Priority 5 — Custom App .zip (30 min)
+Subtotal: ~4.5 hours. Do these in order. Do not start stretch items until all 5 are done.
+
+**Priority 1 — Full Shard FM Engine 62-row end-to-end run (1 hour)**
+- Author the full Shard FM Engine CSV per PRD §11 lines 888–895: 62 rows, 5 levels of nesting, multiple phases, milestones, cross-phase dependencies.
+- Run it end-to-end through the **live Vercel UI → live Railway backend → live Rocketlane workspace**. Not a localhost test, not a direct-POST script test — the real production path Janani will see in the demo.
+- Verify in Rocketlane that the created project matches: phase count, task count, subtask nesting depth, milestone flags, dependency links.
+- **This is the actual demo.** If this run fails, every other Session 4 priority is moot until it's fixed. Session 2's 4-row smoke test is not enough — it was synthetic and tiny. The 62-row scenario is the one that proves the agent handles real-world complexity.
+
+**Priority 2 — Edge case tests (1 hour)**
+These prove the agent is *agentic* (not a deterministic wizard) and they are the scenes that answer "where's the autonomy?" in the demo. Each is a scripted test the agent should handle via its built-in capabilities:
+- **Missing phase dates** → agent should derive them from child task min/max without asking
+- **Ambiguous DD/MM vs MM/DD dates** → agent should call `request_user_approval` with options, then `remember` the choice for the rest of the session
+- **Circular dependency injection** → agent should hit `validate_plan` error, call `reflect_on_failure`, fix the plan, re-validate, succeed (this is the marquee self-correction demo)
+- **Forced task creation failure** → agent should hit the error, call `reflect_on_failure`, use `retry_task` to recover
+- **Deep nesting (4-5 levels)** → verify agent handles it without flattening
+- **Orphan items** → agent should auto-group into "Ungrouped Tasks" phase without asking
+
+**Priority 3 — Duplicate detection (30 min)**
+Cheap, defensive, hardens the demo against an embarrassing failure mode.
+- Add a rule to the system prompt: when `get_rocketlane_context` returns the existing projects list, the agent checks for a duplicate project name against the plan's proposed name. If found, the agent calls `request_user_approval` with options like "Overwrite existing", "Create new with suffix", "Abort".
+- No new tool needed — purely a system prompt addition. 30 minutes of work, protects against "agent creates Plansync E2E Test #47" during the demo.
+
+**Priority 4 — Rocketlane Custom App .zip (30 min)**
+Core deliverable from the plan (§13). This is what demonstrates understanding of Rocketlane's extensibility model, not just its REST API.
 - `custom-app/manifest.json` — Rocketlane Custom App manifest pointing at `https://plansync-tau.vercel.app?embed=1`
 - `custom-app/index.html` — minimal iframe shell (if Rocketlane requires self-contained bundle)
 - `custom-app/icon.svg`
@@ -99,18 +105,56 @@ Right now the agent only creates NEW projects. Users may want to update existing
 - Frontend: `?embed=1` handler to hide the app header when running inside Rocketlane
 - Test: install the .zip in inbarajb.rocketlane.com, open Plansync tab from a project, verify full run works inside the iframe
 
-### Priority 6 — BRD + submit (1.5 hours)
+**Priority 5 — BRD + submit (1.5 hours)**
 - Write BRD (1-2 pages) pulling from `docs/DESIGN.md` + `docs/PLAN.md`
-- Focus on: problem, approach, why it's agentic (21 tools + planning + memory + reflection + journey), demo link, repo link, Custom App .zip link
+- Focus on: problem, approach, why it's agentic (21 tools + planning + memory + reflection + journey + self-correction), demo link, repo link, Custom App .zip link
 - Upload BRD + demo CSV + Custom App .zip to Rocketlane Spaces
 - Submit to Janani
-- Deadline: 2026-04-16
 
-### Also nice-to-have (cut if time tight — but nothing in Priority 1-6 is cuttable)
-- Full Shard FM Engine CSV run (62 rows, 5 levels, PRD §11) for a bigger demo than the 4-row E2E test from Session 2
-- Edge case tests (missing dates, DD/MM ambiguity, circular dep reflection, retry recovery)
-- Rocketlane tracking task status updates (21 tasks in phase "Agent Development", still marked "To do")
-- Account consolidation (GitHub + Vercel + Railway to same GitHub account)
+---
+
+### Product additions (stretch — fit in if time allows)
+
+Subtotal: ~5.5-6.5 hours. These are the 5 items discussed this morning (minus duplicate detection which moved to must-ship because it's cheap). Pick them up only after all must-ship items are done. Any that don't fit are post-submission work — Inbaraj explicitly said "don't cut scope" earlier, but these are genuinely *additions* to the plan, not core deliverables from the original PRD.
+
+**Priority 6 — Admin portal `/admin` (2-3 hours)**
+HTTP Basic Auth protected route. This is a "show-off" feature — just for us to see sessions and tweak settings, not for end users. Scope:
+- HTTP Basic Auth middleware (credentials from `ADMIN_USER` + `ADMIN_PASS` env vars)
+- Model selection (swap `claude-sonnet-4-5` for another model per-session)
+- Settings: session TTL, max turns, rate limit overrides
+- Session list with artifact previews
+- Admin URL: `https://plansync-production.up.railway.app/admin` (or separate subdomain)
+
+**Priority 7 — Lessons feedback loop + knowledge base (2 hours)**
+The agent doesn't get smarter between sessions right now. Add a background "lessons" file that the agent reads at session start and writes to on notable events:
+- User corrects the agent's column mapping → agent records "user's CSVs typically have `task_name` in column 3" as a lesson
+- Agent encounters an API field rename → records the fix from `web_search` as a permanent lesson (not just session-scoped `remember`)
+- Admin can review + approve lessons before they get merged into the knowledge base
+- New tool: `record_lesson(observation, lesson, scope: "session"|"global")`
+- System prompt section: "Prior lessons learned from previous sessions" populated from the knowledge base at session start
+
+**Priority 8 — Create or update flow (1.5 hours)**
+Right now the agent only creates NEW projects. Users may want to update existing ones (add a phase to an in-flight project, sync a revised plan). Scope:
+- 5 new Rocketlane update tools: `update_project`, `update_phase`, `update_task`, `delete_task`, `move_task_to_phase`
+- Diff view: when duplicate detected + user chooses "Update existing", agent computes a diff between current state and new plan, renders a diff card, asks for approval before applying
+- System prompt addition: "If existing project detected AND user chooses update flow, compute diff → show → ask before mutating"
+
+---
+
+### Time math for Session 4
+
+- **Must-ship total: ~4.5 hours** (4h actual work + 30 min buffer for things that break)
+- **Stretch total: ~5.5-6.5 hours**
+- **Combined: ~10-11 hours**
+
+One realistic working day is ~8-9 hours. That means **1-3 hours of stretch items will fit, not all of them.** The honest tradeoff: finishing must-ship first guarantees the submission is complete and the agentic story is proven. Whatever stretch items land on top are bonus — they make the "product" stronger but they're not what Janani will evaluate for "is this an agent."
+
+**My suggested cut order if time gets tight:** Drop Priority 8 (create-or-update) first — it's the most complex and least essential for the submission narrative. Then drop Priority 7 (lessons) second — it's a fantastic post-submission feature but requires admin portal infrastructure to be valuable. Keep Priority 6 (admin portal) if at all possible because it's the most demo-able of the three.
+
+### Carryover items from Session 3 that aren't Session 4 priorities
+
+- **Rocketlane tracking task status updates** — 21 tasks in phase "Agent Development" still marked "To do". Should be marked "Completed" before submission for the story, but it's a 5-minute cleanup and doesn't need its own priority slot. Do it alongside Priority 5 (BRD + submit).
+- **Account consolidation** (GitHub + Vercel + Railway on the same GitHub account) — deferred from Session 2. Not blocking submission. Post-submission cleanup.
 
 ## Open questions for Inbaraj (Session 4)
 
@@ -159,10 +203,12 @@ Session 2 commits (for context): `f6ae9a4` → `9646527` → `d78e8a7` → `e115
 
 ## Known issues / risks to watch in Session 4
 
-- **Vercel deploy just finished** — as of this write, Inbaraj is about to click through the live UI. If anything broke in prod (CORS, SSE buffering, font loading on a different domain than localhost), that's first to fix.
-- **No real end-to-end test on the new UI in production** — Session 2's end-to-end test used a POST-the-CSV-directly script. Session 3's visual test was localhost-only. Session 4 should do one clean run through the live Vercel UI against the live Railway backend, ideally with the Shard FM Engine 62-row CSV.
-- **Custom App iframe sandbox** — untested. Test in inbarajb.rocketlane.com before committing to the iframe approach.
-- **Rocketlane tracking tasks still marked "To do"** — the 21 tracking tasks in phase "Agent Development" should be marked "Completed" for the submission story. Low priority but nice-to-have.
+- **The Shard FM Engine 62-row end-to-end run is now Session 4 Priority 1.** It has never been executed against the live stack. Session 2's 4-row test was synthetic and tiny. If the 62-row run surfaces a bug (context bloat, timeout, RL API rate limit, validation failure pattern we haven't seen), every other Session 4 priority is on hold until it's fixed. Budget 1 hour; reserve 30 min buffer for any fix that comes up.
+- **Vercel deploy just finished** — as of this write, Inbaraj is about to click through the live UI. If anything broke in prod (CORS, SSE buffering, font loading on a different domain than localhost, `ApiKeyCard` POST flow, file upload forwarding), that needs fixing before Session 4 even starts. Feedback is pending.
+- **Edge case tests are Priority 2 and they're the demo story.** The circular-dependency → `reflect_on_failure` → self-correct flow is the marquee "this is an agent" moment. If this doesn't work cleanly, the narrative weakens significantly. Test this at least twice to make sure the reflection card actually renders prominently.
+- **Custom App iframe sandbox** — untested. Rocketlane may apply strict CSP that breaks the iframe. First thing to verify in Priority 4 before committing to the iframe approach; fallback is a self-contained HTML bundle.
+- **Session 4 time budget is tight.** Must-ship is ~4.5 hours, stretch is ~6 hours, total is ~10-11 hours. One working day = ~8-9 hours. The 5 product additions discussed this morning will NOT all fit if the must-ship bucket runs long. See "My suggested cut order" in the "What's next" section above for the tradeoff logic.
+- **Rocketlane tracking tasks still marked "To do"** — the 21 tracking tasks in phase "Agent Development" should be marked "Completed" before submission for the narrative. Folded into Priority 5 (BRD + submit) as a 5-minute cleanup.
 
 ## If the next session starts from a cold start
 
@@ -181,5 +227,7 @@ cd /Users/inbaraj/Downloads/plansync && git pull
 curl -sS https://plansync-production.up.railway.app/health
 open https://plansync-tau.vercel.app    # visual check
 
-# 4. Pick up from "What's next" above — Session 4 starts with Priority 1 (duplicate detection)
+# 4. Pick up from "What's next" above — Session 4 starts with must-ship Priority 1
+#    (Full Shard FM Engine 62-row end-to-end run). This is the first thing to do —
+#    every other priority depends on the demo actually working on the target dataset.
 ```
