@@ -13,6 +13,27 @@ import { startSseStream, makeEmitter, endSseStream } from './lib/sse';
 import { runAgentLoop } from './agent/loop';
 import { encrypt } from './lib/crypto';
 import type { CsvArtifactContent } from './tools/parse-csv';
+import {
+  mintAdminToken,
+  verifyAdminCredentials,
+  isAdminPortalConfigured,
+} from './admin/auth';
+import {
+  requireAdminAuth,
+  buildAdminCookieHeader,
+  buildClearAdminCookieHeader,
+} from './admin/middleware';
+import {
+  getAdminConfigSnapshot,
+  setModel,
+  setMaxTokens,
+  setMaxRetries,
+  setDisabledTools,
+} from './admin/config';
+import { computeDashboardStats, listRecentSessions } from './admin/stats';
+import type { StatusFilter, DateRangeFilter } from './admin/stats';
+import { getDailyUsage } from './admin/usage';
+import { TOOL_CATALOG, TOOL_CATEGORIES } from './admin/tools-catalog';
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 3001);
@@ -429,6 +450,201 @@ app.delete('/session/:id/events', async (req: Request, res: Response) => {
   }
 });
 
+// ============================================================================
+// ADMIN PORTAL ROUTES
+// ============================================================================
+//
+// The admin portal is an operator dashboard (Inbaraj) for observing running
+// sessions, adjusting runtime config (model, max_tokens, retries, disabled
+// tools), and viewing token usage + cost estimates. It is NOT for end users.
+//
+// Auth: HMAC-signed token in an HttpOnly cookie. Credentials are set on
+// Railway via ADMIN_USERNAME + ADMIN_PASSWORD env vars. If either is
+// missing, every /admin/* endpoint returns 503 (fail-closed).
+//
+// Routes:
+//   POST   /admin/login       — username/password, issues cookie on success
+//   POST   /admin/logout      — clears the cookie
+//   GET    /admin/me          — returns {authenticated: boolean} for the UI
+//   GET    /admin/dashboard   — stats + recent sessions (supports filters)
+//   GET    /admin/tools       — tool catalog for the UI grid
+//   GET    /admin/config      — current effective config snapshot
+//   POST   /admin/config      — update one or more config values
+//   POST   /admin/config/disabled-tools — replace disabled tools list
+
+// ---------- POST /admin/login ----------
+app.post('/admin/login', async (req: Request, res: Response) => {
+  try {
+    if (!isAdminPortalConfigured()) {
+      res.status(503).json({
+        error:
+          'Admin portal is not configured. Set ADMIN_USERNAME and ADMIN_PASSWORD env vars on the backend.',
+        code: 'portal_not_configured',
+      });
+      return;
+    }
+    const username = typeof req.body?.username === 'string' ? req.body.username : '';
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    if (!username || !password) {
+      res.status(400).json({ error: 'username and password required' });
+      return;
+    }
+    if (!verifyAdminCredentials(username, password)) {
+      // Intentionally generic error — don't leak which field was wrong
+      res.status(401).json({ error: 'Invalid credentials', code: 'invalid_credentials' });
+      return;
+    }
+    const { token, expiresAt } = mintAdminToken();
+    const lifetimeSeconds = Math.max(1, Math.round((expiresAt - Date.now()) / 1000));
+    res.setHeader('Set-Cookie', buildAdminCookieHeader(token, lifetimeSeconds));
+    res.json({ ok: true, expiresAt });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+// ---------- POST /admin/logout ----------
+app.post('/admin/logout', (_req: Request, res: Response) => {
+  res.setHeader('Set-Cookie', buildClearAdminCookieHeader());
+  res.json({ ok: true });
+});
+
+// ---------- GET /admin/me ----------
+// Used by the frontend /admin route to check if the current cookie is
+// valid BEFORE rendering the dashboard. If 401 → redirect to /admin/login.
+app.get('/admin/me', requireAdminAuth, (_req: Request, res: Response) => {
+  res.json({ authenticated: true });
+});
+
+// ---------- GET /admin/dashboard ----------
+// Returns everything the dashboard needs in ONE request: stats, config,
+// tools catalog, today's usage, and filtered recent sessions.
+//
+// Query params:
+//   dateRange: today | 24h | 7d | all   (default: 7d)
+//   status:    all | successful | errored | in_progress | abandoned  (default: all)
+//   search:    partial sessionId match   (default: empty)
+//   limit:     max rows (default 25, max 100)
+app.get('/admin/dashboard', requireAdminAuth, async (req: Request, res: Response) => {
+  try {
+    const dateRange = (typeof req.query.dateRange === 'string'
+      ? req.query.dateRange
+      : '7d') as DateRangeFilter;
+    const status = (typeof req.query.status === 'string'
+      ? req.query.status
+      : 'all') as StatusFilter;
+    const search = typeof req.query.search === 'string' ? req.query.search : '';
+    const limit = Math.min(
+      100,
+      Math.max(1, Number(req.query.limit ?? 25))
+    );
+
+    const [stats, config, dailyUsage, recentSessions] = await Promise.all([
+      computeDashboardStats(),
+      getAdminConfigSnapshot(),
+      getDailyUsage(),
+      listRecentSessions({ dateRange, status, search, limit }),
+    ]);
+
+    // Compute the two "today's cost" stat cards from dailyUsage
+    const todayCostUsd = dailyUsage.totalCostUsd;
+    const avgCostPerRun =
+      stats.runsToday > 0 ? todayCostUsd / stats.runsToday : 0;
+
+    res.json({
+      stats: {
+        ...stats,
+        todayCostUsd,
+        avgCostPerRunUsd: avgCostPerRun,
+        todayTotalTokens: dailyUsage.totalTokens,
+        todayTurns: dailyUsage.totalTurns,
+      },
+      config,
+      dailyUsage,
+      recentSessions,
+      generatedAt: Date.now(),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+// ---------- GET /admin/tools ----------
+// Returns the full tool catalog for the UI grid. Static metadata (names,
+// descriptions, categories) plus the current disabled list so the UI knows
+// which toggles are on/off.
+app.get('/admin/tools', requireAdminAuth, async (_req: Request, res: Response) => {
+  try {
+    const config = await getAdminConfigSnapshot();
+    res.json({
+      categories: TOOL_CATEGORIES,
+      tools: TOOL_CATALOG,
+      disabledTools: config.disabledTools,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+// ---------- GET /admin/config ----------
+app.get('/admin/config', requireAdminAuth, async (_req: Request, res: Response) => {
+  try {
+    const snapshot = await getAdminConfigSnapshot();
+    res.json(snapshot);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+// ---------- POST /admin/config ----------
+// Accepts partial updates: { model?, maxTokens?, maxRetries? }
+// Pass `null` to clear an override (falls back to env var).
+app.post('/admin/config', requireAdminAuth, async (req: Request, res: Response) => {
+  try {
+    const body = (req.body ?? {}) as {
+      model?: string | null;
+      maxTokens?: number | null;
+      maxRetries?: number | null;
+    };
+
+    const promises: Promise<void>[] = [];
+    if ('model' in body) promises.push(setModel(body.model ?? null));
+    if ('maxTokens' in body)
+      promises.push(setMaxTokens(body.maxTokens ?? null));
+    if ('maxRetries' in body)
+      promises.push(setMaxRetries(body.maxRetries ?? null));
+
+    await Promise.all(promises);
+    const snapshot = await getAdminConfigSnapshot();
+    res.json({ ok: true, config: snapshot });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: message });
+  }
+});
+
+// ---------- POST /admin/config/disabled-tools ----------
+// Replaces the disabled tools list. Body: { tools: string[] }
+// The setter filters out `request_user_approval` automatically.
+app.post(
+  '/admin/config/disabled-tools',
+  requireAdminAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const tools = Array.isArray(req.body?.tools) ? req.body.tools : [];
+      const applied = await setDisabledTools(tools);
+      res.json({ ok: true, disabledTools: applied });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(400).json({ error: message });
+    }
+  }
+);
+
 // ---------- boot ----------
 
 app.listen(PORT, () => {
@@ -436,4 +652,7 @@ app.listen(PORT, () => {
   console.log(`  Anthropic: ${process.env.ANTHROPIC_API_KEY ? 'ok' : 'MISSING'}`);
   console.log(`  Redis:     ${process.env.UPSTASH_REDIS_REST_URL ? 'ok' : 'MISSING'}`);
   console.log(`  Crypto:    ${process.env.ENCRYPTION_KEY ? 'ok' : 'MISSING'}`);
+  console.log(
+    `  Admin:     ${isAdminPortalConfigured() ? 'configured' : 'NOT CONFIGURED (set ADMIN_USERNAME + ADMIN_PASSWORD)'}`
+  );
 });
