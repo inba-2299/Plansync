@@ -685,6 +685,68 @@ Each difference required a system prompt patch. Net effect: the system prompt gr
 - New: `execute_plan_creation` (batch execution tool)
 - All other tools unchanged in signature
 
+### Decision: refresh-safe sessions via Redis event log replay (Option 1 / Tier 1)
+
+**What happened.** Mid-Session 4, Inbaraj realized a browser refresh nukes all state — reasoning bubbles, cards, journey, approvals, everything. The user has to start over from "Hello, enter your API key." He said "this is critical to me" and "iam sincerely regretting not using supabase" because the auth/persistence story felt underbaked. Root cause was simple: `const [sessionId] = useState(() => web-${Date.now()}-${Math.random()...})` — a fresh ID every refresh, orphaning the Redis session.
+
+**The discussion.** We went back and forth on the architecture before any code. Three options for the identity anchor:
+1. **Browser cookie / localStorage** — same trust model as where we started; doesn't solve anything if the user wants cross-device recovery
+2. **API-key-derived identity** — call Rocketlane `/users/me` to get a stable user ID, hash it, use that as the session anchor. BUT: Rocketlane does NOT expose `/users/me` (only `/users` which lists the whole workspace). Pivoted to `sha256(apiKey)` as the identity anchor — same security model, doesn't require the missing endpoint.
+3. **User-chosen random name** — fun UX but falls apart on security analysis (names are guessable; if name alone is the secret, weak; if name + API key, the name is pure friction)
+
+We also discussed the UI shape — gate page vs auto-start — and scoped two tiers:
+- **Tier 1 (Option 1):** localStorage sessionId + server-side event log replay. No auth, no gate page, no cross-device recovery. 90 min of work.
+- **Tier 2 (Option 2):** gate page with API key entry → validation → session tokens → auth middleware on all endpoints → cross-device recovery via `user:{hash}:sessions` index. 4.5 hr of work.
+
+**The decision.** **Tier 1 only, for submission.** Tier 2 deferred post-submission. Reasoning:
+- The 95% use case is "refresh mid-session on my laptop" — Tier 1 solves this completely
+- The 5% case (cross-device) is never exercised during a single-reviewer demo
+- Tier 2's auth + gate page would eat half a day and leave zero buffer for Custom App + BRD
+- Tier 2 is a real feature with real security surface — worth doing properly post-submission, not rushing
+
+I started building Tier 2 (wrote `auth/validate-rl-key.ts`, `auth/session-token.ts`, `memory/events.ts`, `memory/user-sessions.ts`) before realizing the scope was wrong for the time remaining. Inbaraj paused me and asked "option 1 or option 2?" — that was the moment I caught the overscope and we reset. Deleted the 3 Tier 2 files (auth utilities + user-sessions index), kept `events.ts` (needed for Tier 1 too).
+
+**Architecture (what got built in Commit 2g):**
+
+Backend:
+- `memory/events.ts` — `appendSessionEvent(sessionId, event)` RPUSHes serialized events to `session:{id}:events` with 7-day TTL. `loadSessionEvents(sessionId)` returns the full list via LRANGE 0 -1. `clearSessionEvents(sessionId)` DELs the log for explicit resets.
+- In `/agent` route, wrap `emit()` function: the wrapper calls `appendSessionEvent` first (fire-and-forget), THEN forwards to the SSE response via `baseEmit`. Crucial detail: the persistence step runs BEFORE `makeEmitter`'s `res.writableEnded` check, so events emitted AFTER the client disconnects (user refreshed mid-stream) are still captured for replay.
+- New `GET /session/:id/events` returning `{events, count}`.
+- New `DELETE /session/:id/events` for explicit cleanup (called by "New session" button).
+
+Frontend:
+- `sessionId` reads from `localStorage['plansync-session-id']` synchronously on first render via `useState(loadOrCreateSessionId)`. First visit generates fresh; subsequent reloads return the same ID.
+- Mount effect: `Promise.all([fetchSessionEvents, fetchJourney])` → if `events.length === 0`, send greeting as before; if non-empty, loop `handleAgentEvent(ev)` over every event and let the same state-derivation code path rebuild the UI.
+- Force `setStreaming(false)` and reset `currentReasoningIdRef` after replay so the input unlocks and a new reasoning bubble is created on the next live event.
+- `hydrationMode` state: `'loading' | 'fresh' | 'resumed' | 'mid-stream'`. Mid-stream (refresh hit while backend was still emitting) shows a warning banner with a "Check for updates" button that re-fetches `/events` and appends anything new.
+- `seenEventCountRef` tracks how many events were already replayed so incremental updates don't replay everything.
+- "New session" button in the header — confirm → `DELETE /session/:id/events` → clear localStorage → `window.location.reload()`.
+
+**The approval-replay follow-up bug.** First test after Commit 2g: Inbaraj refreshed and the agent workspace was perfect but the USER WORKSPACE showed every prior approval card (API key, workspace confirm, upload) as unanswered, with option chips active again. The `awaiting_user` events had replayed as fresh UiMessages with `answered: false`.
+
+Root cause: the user's CLICK that resolved each approval isn't an event in the log. It's a separate POST /agent with a uiAction body, which causes the backend to continue the loop — but nothing gets written to the events list that explicitly says "approval X was answered".
+
+Fix: **derive the answered state from the event log structure**. Rule: if there's ANY event in the log after an `awaiting_user`, that approval was answered (the agent kept going past it). Only the very last `awaiting_user` is still pending, and only if it's literally the last event. New `markPriorApprovalsAsAnswered(events)` helper walks backward to find the pending `toolUseId`, then maps over `messages` flipping every other `awaiting` entry to `answered: true` with a generic "Answered" label.
+
+**UX trade-off.** We can't recover which option the user actually picked (not captured in events), so previously-answered approvals all show "Answered" generically. Post-submission improvement: emit a synthetic `user_action` event on every `uiAction` POST to capture the selection — ~10 min of work.
+
+**Why this approach is better than the alternatives I considered:**
+- **Option A — replay Anthropic history only.** Simpler (nothing new on backend) but loses ALL display cards (PlanReviewTree, ExecutionPlanCard, ProgressFeed, ReflectionCard, CompletionCard) and the journey stepper, because those are SSE-only synthetic events that never land in Anthropic history. Would feel half-broken.
+- **Option C — persist derived UiMessages in localStorage on the client.** Duplicates the state-derivation logic (live vs replay code paths diverge, which is a bug factory). Loses data if user switches browsers. Doesn't work in private mode.
+- **Option 2 — persist events in Redis.** Backend is the single source of truth, replay uses the SAME `handleAgentEvent` function that processes live events, scales to any number of events (~100-500 per run, well below Upstash limits), TTL handles cleanup. Only downside: adds one Redis RPUSH per event, which is a non-issue on Upstash.
+
+**Lessons:**
+
+**Lesson: state-derivation logic should run once, not twice.** My first instinct was to write separate "hydration" logic that builds `UiMessage[]` directly from a backend snapshot. Wrong. The whole point of the event-driven architecture is that `handleAgentEvent` is the single state-derivation function. If you need to hydrate from a backend store, make the backend store hold the SAME events and replay them through the SAME handler. If there's only one code path, there's only one place for bugs.
+
+**Lesson: for event logs, capture user-triggered state transitions explicitly.** The approval-replay bug happened because the "user clicked X" action wasn't an event. The backend processed it (the loop continued) but the event log has no trace of "user answered approval Y with option Z". Lesson: when building an event-sourced system, every state transition — including those triggered by user input — should be captured as an event. Post-submission improvement: emit `user_action` events on every `uiAction` POST.
+
+**Lesson: time-box architecture discussions BEFORE you start typing.** I got confused partway through Session 4 between "Option 1", "Option 2", "Tier 1", "Tier 2", "Option A", "Option B". The user called me out and said "wait, what are we building?" That was the moment I realized I had overscoped and was halfway through the wrong plan. Had to delete 3 backend files and reset. Cost ~15 min of wasted work. Prevention: when there are multiple options, explicitly label them ONCE with durable names and stick to those names for the rest of the discussion. And verify the user has the same mental model before starting to code — not a wall of text, a 2-line "Confirming: we're building X, not Y. Yes?" prompt.
+
+**Lesson: check what the backend actually exposes before designing around assumed endpoints.** I planned the full Tier 2 architecture around `GET /users/me` on Rocketlane before reading the RL client code. When I finally read it, I found a comment saying "Rocketlane does not expose a /users/me style endpoint". Pivoted to `sha256(apiKey)` as the identity anchor, but had to redo the auth middleware design. Lesson: for any integration-dependent architecture, READ THE CLIENT FIRST. The client's comments and method list are usually dispositive about what's actually available.
+
+---
+
 ### Decision: application crash from missing `dependsOn` — frontend harden + error boundary
 
 **What happened.** Mid-Haiku run, after a successful clean refresh, the production UI (https://plansync-tau.vercel.app) blanket-crashed with "Application error: a client-side exception has occurred (see the browser console for more information)". No stack trace visible in the user's browser (production Next.js build has minified errors). I couldn't pull Vercel or Railway logs (neither CLI was authenticated locally), so I diagnosed by code reading.

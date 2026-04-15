@@ -6,18 +6,18 @@
 
 ## Last updated
 
-**2026-04-15, late afternoon — Session 4 continuing post-compact, just shipped Commit 2f (application crash fix + error boundary).**
+**2026-04-15, late afternoon — Session 4 continuing post-compact, just shipped Commit 2g (refresh-safe sessions via Redis event log replay) + a follow-up fix for approval answered-state on replay.**
 
 ## Status
 
-**FULL STACK IS LIVE AND VERIFIED END-TO-END ON SONNET.** First clean batch run completed successfully with Sample Plan.xlsx (21 tasks, 8 phases, 8 milestones, 12 dependencies, 3.5s execution time, $0.86/run cost). Haiku switch was mid-test when a frontend render bug (missing `dependsOn` on a plan item) caused a white-page crash — now fixed in Commit 2f with both surgical hardening AND a top-level error boundary. Core architecture is stable. Remaining submission work is Custom App .zip + BRD document.
+**FULL STACK IS LIVE AND VERIFIED END-TO-END ON SONNET.** Plus the two biggest Session 4 bugs are now solved: (1) Commit 2f fixed the mid-Haiku-run white-page crash (`PlanReviewTree.dependsOn.length` on undefined), and (2) Commit 2g fixed the "refresh loses everything" problem by persisting every SSE event to Redis and replaying it on mount. Core architecture is stable and refresh-safe. Remaining submission work is Commit 2c UX polish → Custom App .zip → BRD document.
 
-- **Railway backend** v0.1.12: https://plansync-production.up.railway.app — SSE heartbeat (every 15s) + batch `execute_plan_creation` tool + interactive metadata rule + env-var model + 429 retry + Rocketlane URL rule + execution plan final-state rule
-- **Vercel frontend** `e8981d9`: https://plansync-tau.vercel.app — split UI (user left 40%, agent right 60%), pinned cards inside agent column, collapsible execution plan, 14px base font scaling, responsive fallback below 1024px, **ErrorBoundary wrapping Chat**, **PlanReviewTree hardened against missing dependsOn**
+- **Railway backend** v0.1.13: https://plansync-production.up.railway.app — SSE heartbeat (every 15s) + batch `execute_plan_creation` tool + interactive metadata rule + env-var model + 429 retry + Rocketlane URL rule + execution plan final-state rule + **per-session event log persistence** (new: `session:{id}:events` list in Redis, TTL 7d, wraps `emit()` fire-and-forget so events are captured even after client disconnect)
+- **Vercel frontend** `96f9c59`: https://plansync-tau.vercel.app — split UI (user left 40%, agent right 60%), pinned cards inside agent column, collapsible execution plan, 14px base font scaling, responsive fallback below 1024px, **ErrorBoundary wrapping Chat**, **PlanReviewTree hardened against missing dependsOn**, **localStorage sessionId + hydration replay + mid-stream refresh banner + "New session" button in header + post-replay approval answered-state marking**
 - **Model**: `ANTHROPIC_MODEL=claude-haiku-4-5` currently set on Railway
 - **Cost trajectory**: $3/run (pre-optimization, Sonnet) → $0.86/run (post-2e + all optimizations, Sonnet) → predicted $0.20-0.25/run (Haiku)
 
-**Next focus**: Custom App .zip (30-45 min) + BRD document (45-60 min), then submit. The application crash that emerged pre-compact is resolved. Custom App + BRD are the last two submission-blocking items.
+**Next focus**: Commit 2c UX polish (~20 min: FileUploadCard title, ApprovalPrompt preamble strip, journey_update defensive guards, JourneyStepper status guard, delete stray PNG) → Custom App .zip (~30-45 min) → BRD document (~45-60 min) → submit. The three known crash/UX pain points (refresh loses state, white-page on PlanReviewTree, SSE hang on Haiku) are all resolved.
 
 ## Just completed (Session 4 — commits in chronological order)
 
@@ -101,6 +101,40 @@ These commits arrived after Inbaraj flagged "chat input is enabled while agent i
     - `CompletionCard`: removed the broken `app.rocketlane.com/projects/${projectId}` URL fallback. Now hides the "View in Rocketlane" button entirely if the agent didn't pass a fully-qualified `projectUrl`.
     - `ErrorBoundary`: new class component (React error boundaries require classes) wrapping `Chat` in `app/page.tsx`. Catches any render crash in any agent-emitted card and renders a recoverable "Something went wrong" card with error details + "Reset view" (setState) and "Full reload" (window.location.reload) buttons. Second line of defense — doesn't fix bugs but converts white-page-of-death into recoverable error card.
     - Verified: `npm run build` passes clean.
+
+### Phase 9: Refresh-safe sessions via Redis event log replay (Option 1)
+
+**Context.** Through Session 4 we discovered that a mid-session browser refresh was nuking all UI state (reasoning bubbles, cards, journey, approvals) because `sessionId` was regenerated from `Date.now()` on every page load — orphaning the Redis session and forcing the user to start over. Inbaraj explicitly called this "critical" and asked for discussion before we touched it. We scoped two options: Tier 1 (localStorage + event log replay, ~90 min) and Tier 2 (full gate page + auth + cross-device recovery, ~4.5 hr). Chose **Tier 1** for speed; Tier 2 deferred post-submission because cross-device recovery isn't exercised during a single-reviewer demo.
+
+15. **`a9974c5`** — Commit 2g: Refresh-safe sessions. Full bi-directional change across backend and frontend.
+
+    **Backend (Railway v0.1.13):**
+    - New `agent/src/memory/events.ts` module. `appendSessionEvent(sessionId, event)` RPUSHes to `session:{id}:events` with 7d TTL refresh on every write. `loadSessionEvents(sessionId)` returns the full list. `clearSessionEvents(sessionId)` drops the log (called on explicit "New session" button).
+    - `/agent` route handler wraps `emit()` so every SSE event is ALSO persisted to Redis BEFORE being forwarded to the HTTP response. Critical detail: the persistence runs before the `res.writableEnded` check in `makeEmitter`, so events emitted AFTER the client disconnects (e.g. user refreshed mid-stream) are still captured.
+    - New `GET /session/:id/events` endpoint returning `{events, count}`.
+    - New `DELETE /session/:id/events` endpoint for explicit "New session" cleanup (not destructive to main session data — only touches the events log).
+    - Version bumped from 0.1.12 to 0.1.13.
+
+    **Frontend (Vercel):**
+    - `sessionId` now reads from/writes to `localStorage['plansync-session-id']` synchronously on first render. First visit generates it, subsequent reloads return the same ID so the backend event log is reachable. Private-mode fallback: if localStorage throws, fall back to per-load random ID (no persistence, same as before).
+    - New `fetchSessionEvents(sessionId)` and `clearSessionEvents(sessionId)` helpers in `agent-client.ts`.
+    - `Chat.tsx` mount effect replaced: fetches events + journey in parallel; if events list is empty, sends the greeting as before; if non-empty, replays each event through the same `handleAgentEvent` function that processes live events — reconstructing reasoning bubbles, tool call lines, plan review tree, execution plan, journey state, pending approvals, etc. No duplicated state-derivation logic. Same code path as live streaming.
+    - `hydrationMode` state tracks what kind of load this is: `'loading' | 'fresh' | 'resumed' | 'mid-stream'`. Mid-stream mode (refresh hit while the agent was emitting) shows a warning banner with a "Check for updates" button that re-fetches `/events` and appends anything new (so the user can pull events emitted by a backend loop that kept running after the client disconnect).
+    - `seenEventCountRef` tracks how many events were already replayed so "check for updates" only appends new ones, never double-replays.
+    - New "New session" button in the header (next to the "Connected" pill). Confirms with a dialog, best-effort DELETEs the backend events log, clears localStorage, reloads the page.
+    - Version bumped to match backend semantics.
+
+16. **`96f9c59`** — Post-2g fix: mark replayed approvals as answered.
+
+    **The bug.** After Commit 2g, the initial replay was perfect for the agent workspace (plan review tree, journey stepper, reasoning bubbles all restored), but every `awaiting_user` event re-rendered in the user workspace as a fresh unanswered prompt — with option chips active again. So the user saw ghost prompts like "Please provide your Rocketlane API key" and "Is this the correct Rocketlane workspace?" even though they had already clicked through those earlier in the session.
+
+    **Root cause.** The user's CLICK that resolves an approval isn't an event in the log. It's a separate `POST /agent` call with a `uiAction` body that causes the backend to continue the loop — but nothing explicit gets written to the events list saying "approval X was answered". So pure replay has no direct signal for resolved state. `handleAgentEvent`'s `awaiting_user` case creates `UiMessage` entries with `answered: false` by default.
+
+    **The fix.** Introduce a rule we CAN apply from the event log alone: **if there's any event in the log after an `awaiting_user`, that approval was answered** (evidenced by the fact that the agent kept going past it). Only the very last `awaiting_user` in the log is still pending, and only if it's literally the last event (making it the current "waiting for user" state). New `markPriorApprovalsAsAnswered(events)` callback walks backward to find the pending toolUseId, then flips every other `awaiting` UiMessage to `answered: true` with a generic "Answered" label. Called once after the initial replay loop, and again inside `handleCheckForUpdates` after appending new events.
+
+    **UX trade-off.** We can't recover which option the user actually picked (not captured in events), so previously-answered approvals all show a generic "Answered" label instead of the specific choice. This could be fixed post-submission by emitting a synthetic `user_action` event on every `uiAction` POST — ~10 minutes of work, not submission-critical.
+
+    **Net result of Commit 2g + fix.** Browser refresh at any point returns to the exact same UI state — reasoning bubbles, tool calls, plan review tree, execution plan, progress feed, reflections, journey stepper, AND correctly-answered prior approval cards. Zero data loss on same-browser refresh. Only limitation is cross-device recovery (phone ↔ laptop), which is Tier 2 and deferred post-submission.
 
 ## Current architecture snapshot
 

@@ -31,6 +31,7 @@ A properly designed agent (not a wizard) that:
 - Recovers from Rocketlane API changes at runtime via `web_search`
 - Handles rate limits gracefully: 429 retry with `Retry-After` backoff, visible countdown card in the UI, up to 3 retry attempts before giving up
 - Model-swappable via a Railway env var (`ANTHROPIC_MODEL`): Haiku 4.5, Sonnet 4.5, or Opus 4.5 — no code change
+- **Refresh-safe**: every SSE event is persisted to Redis, the frontend replays them on page load, so a browser refresh returns to exactly the same state (reasoning bubbles, plan review, execution plan, pending approvals, journey stepper). Same-browser only; cross-device recovery is a post-submission feature.
 - Runs inside Rocketlane as a Custom App
 
 ## Architecture

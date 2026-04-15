@@ -16,9 +16,13 @@
 >
 > 6. **429 retry with `Retry-After` backoff** is implemented in the agent loop. Up to 3 retries, max 60s wait per retry, emits `rate_limited` SSE event to frontend so users see a countdown. AgentEvent union gained `rate_limited` variant and `error.kind` field.
 >
-> 7. **Rocketlane Custom App .zip** and **BRD document** are NOT yet built at the time of this addendum — they're queued as the final two core deliverables. When they land, this addendum should be updated to reflect "all 6 core deliverables complete."
+> 7. **Refresh-safe sessions via Redis event log replay (Commit 2g).** Every SSE event the agent emits is persisted to a new `session:{id}:events` list in Redis with a 7-day TTL. The frontend reads `sessionId` from `localStorage['plansync-session-id']` (instead of regenerating it on every page load) and on mount calls `GET /session/:id/events` to replay the full event list through the same `handleAgentEvent` function that processes live streaming — reconstructing reasoning bubbles, tool calls, plan review tree, execution plan, journey state, and pending approvals exactly as they were before the refresh. Same-browser only; cross-device recovery (Tier 2: gate page + API-key-based auth + user→sessions index) is deferred post-submission. See MEMORY.md "Decision: refresh-safe sessions via Redis event log replay".
 >
-> 8. For the **current state of the build**, read `CONTEXT.md`. For the **why** of every decision, read `MEMORY.md`. This plan is historical — it's Session 1's blueprint, not the running architecture.
+> 8. **Application-crash error boundary (Commit 2f).** Any unhandled render error in any agent-emitted card used to blanket-crash the app ("Application error: a client-side exception"). Fixed two ways: surgical `normalizePlanItem()` hardening in `PlanReviewTree` for the specific bug (missing `dependsOn` on Haiku-generated plans), plus a class-based `ErrorBoundary` wrapping `Chat` in `app/page.tsx` that catches any future render crash and shows a recoverable card instead of white-paging. See MEMORY.md "Decision: application crash from missing dependsOn — frontend harden + error boundary".
+>
+> 9. **Rocketlane Custom App .zip** and **BRD document** are NOT yet built at the time of this addendum — they're queued as the final two core deliverables. When they land, this addendum should be updated to reflect "all 6 core deliverables complete."
+>
+> 10. For the **current state of the build**, read `CONTEXT.md`. For the **why** of every decision, read `MEMORY.md`. This plan is historical — it's Session 1's blueprint, not the running architecture.
 
 ## Context
 
