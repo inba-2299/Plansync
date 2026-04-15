@@ -160,3 +160,50 @@ export async function fetchJourney(
     return { steps: [] };
   }
 }
+
+/**
+ * Fetch the full SSE event log for a session — used for refresh-hydration.
+ *
+ * Every event the agent ever emitted for this session (text deltas, tool
+ * calls, display components, journey updates, pending approvals, errors)
+ * is returned in chronological order. The frontend replays them through
+ * `handleAgentEvent` on mount to reconstruct the exact UI state from
+ * before the browser refresh.
+ *
+ * Returns `{ events: [], count: 0 }` if the session doesn't exist, is
+ * empty, or the network call fails — callers can treat an empty list
+ * as "fresh session, start the greeting flow".
+ */
+export async function fetchSessionEvents(
+  sessionId: string
+): Promise<{ events: import('./event-types').AgentEvent[]; count: number }> {
+  try {
+    const res = await fetch(`${AGENT_URL}/session/${sessionId}/events`);
+    if (!res.ok) return { events: [], count: 0 };
+    return (await res.json()) as {
+      events: import('./event-types').AgentEvent[];
+      count: number;
+    };
+  } catch {
+    return { events: [], count: 0 };
+  }
+}
+
+/**
+ * Clear the event log for a session — called by the "New session" button
+ * flow so that a fresh start doesn't leave the old event log behind.
+ * This does NOT touch the core session state (Redis still has history,
+ * journey, idmap, etc.) — only the replay log is cleared.
+ *
+ * Best-effort: failures are swallowed because this is a cleanup step, not
+ * a correctness step. TTL eventually cleans up the log anyway.
+ */
+export async function clearSessionEvents(sessionId: string): Promise<void> {
+  try {
+    await fetch(`${AGENT_URL}/session/${sessionId}/events`, {
+      method: 'DELETE',
+    });
+  } catch {
+    // ignore
+  }
+}

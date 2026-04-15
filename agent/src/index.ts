@@ -4,6 +4,11 @@ import type { AgentEvent, AnthropicContentBlock } from './types';
 import { loadSession, saveSession } from './memory/session';
 import { putArtifact } from './memory/artifacts';
 import { acquireLock } from './memory/lock';
+import {
+  appendSessionEvent,
+  loadSessionEvents,
+  clearSessionEvents,
+} from './memory/events';
 import { startSseStream, makeEmitter, endSseStream } from './lib/sse';
 import { runAgentLoop } from './agent/loop';
 import { encrypt } from './lib/crypto';
@@ -59,7 +64,7 @@ app.get('/', (_req: Request, res: Response) => {
 app.get('/health', (_req: Request, res: Response) => {
   res.json({
     status: 'ok',
-    version: '0.1.12',
+    version: '0.1.13',
     env: {
       anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
       redis: Boolean(process.env.UPSTASH_REDIS_REST_URL),
@@ -216,7 +221,33 @@ app.post('/agent', async (req: Request, res: Response) => {
   }
 
   startSseStream(res);
-  const emit = makeEmitter(res);
+  const baseEmit = makeEmitter(res);
+
+  // Wrap the emitter so every event is ALSO persisted to Redis under
+  // `session:{id}:events`. This is what powers refresh-hydration on the
+  // frontend: when the user refreshes mid-session, the client calls
+  // GET /session/:id/events and replays the list through its own
+  // handleAgentEvent — reconstructing reasoning bubbles, tool calls,
+  // display cards, journey state, and any pending approval without
+  // duplicated state-derivation logic.
+  //
+  // The persist call runs BEFORE forwarding to SSE because we want
+  // every event captured even if the client disconnected mid-stream
+  // (makeEmitter silently drops writes to a closed response, but
+  // persistence must still happen — otherwise a refresh would lose
+  // events emitted after the disconnect).
+  //
+  // Fire-and-forget: a Redis write failure should never crash the
+  // agent loop. We log and move on.
+  const emit: (event: AgentEvent) => void = (event) => {
+    void appendSessionEvent(sessionId, event).catch((err) => {
+      console.error(
+        `[events] failed to persist event for ${sessionId}:`,
+        err instanceof Error ? err.message : err
+      );
+    });
+    baseEmit(event);
+  };
 
   try {
     const session = await loadSession(sessionId);
@@ -326,6 +357,72 @@ app.get('/session/:id/journey', async (req: Request, res: Response) => {
     }
     const session = await loadSession(sessionId);
     res.json({ steps: session.journey });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+// ---------- GET /session/:id/events ----------
+//
+// Full SSE event replay for browser-refresh hydration. Returns every
+// AgentEvent that was emitted on this session (reasoning text deltas,
+// tool calls, display components, journey updates, memory writes,
+// rate-limit notices, awaiting_user, done, error — everything).
+//
+// The frontend calls this once on page load with the sessionId it
+// read from localStorage. If the list is empty, treat it as a fresh
+// session. Otherwise, replay each event through handleAgentEvent to
+// reconstruct the UI state (reasoning bubbles, tool call lines, plan
+// review tree, execution plan, pending approvals, etc.) — exactly as
+// it was before the refresh.
+//
+// The last event tells you the current state:
+//   - 'done' → turn complete, user idle
+//   - 'awaiting_user' → waiting on an approval click
+//   - 'error' → something failed, show the error
+//   - anything else (text_delta, tool_use_*, etc.) → the refresh hit
+//     mid-stream; the backend may still be running, show a "check for
+//     updates" hint and let the user re-fetch to see the rest
+
+app.get('/session/:id/events', async (req: Request, res: Response) => {
+  try {
+    const sessionId = req.params.id;
+    if (!sessionId) {
+      res.status(400).json({ error: 'sessionId required' });
+      return;
+    }
+    const events = await loadSessionEvents(sessionId);
+    res.json({ events, count: events.length });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+// ---------- DELETE /session/:id ----------
+//
+// Clear a session's events log. Called by the frontend's "New session"
+// button flow so that explicitly starting over doesn't leave orphan
+// event logs behind. The actual session data (meta, history, journey,
+// etc.) is left alone because it's keyed on sessionId and a new
+// sessionId will just start fresh anyway — but the events log is
+// tied to the sessionId and would be seen on any future replay call,
+// so we clear it explicitly.
+//
+// Note: this is NOT destructive to the main session store. It only
+// touches `session:{id}:events`. The other session keys naturally
+// expire via the 7-day TTL.
+
+app.delete('/session/:id/events', async (req: Request, res: Response) => {
+  try {
+    const sessionId = req.params.id;
+    if (!sessionId) {
+      res.status(400).json({ error: 'sessionId required' });
+      return;
+    }
+    await clearSessionEvents(sessionId);
+    res.json({ ok: true, sessionId });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: message });

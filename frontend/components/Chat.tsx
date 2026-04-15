@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   sendToAgent,
   fetchJourney,
+  fetchSessionEvents,
+  clearSessionEvents,
   storeRocketlaneApiKey,
   uploadPlanFile,
 } from '@/lib/agent-client';
@@ -159,12 +161,49 @@ const INITIAL_USER_MESSAGE =
 
 // ---------- Component ----------
 
+/**
+ * localStorage key that holds the current sessionId for refresh persistence.
+ *
+ * The value is a `web-...` identifier that maps 1:1 to the Redis session
+ * store. We read it synchronously on first render (inside useState's
+ * initializer) so the sessionId is stable for the entire component
+ * lifetime — the mount effect can then hit `/session/:id/events` with
+ * that ID and replay any prior state.
+ *
+ * On first visit (no stored ID) we generate a fresh one and write it
+ * back to localStorage immediately. On subsequent refreshes, the same
+ * ID is returned so the backend's event log for that session is
+ * reachable.
+ *
+ * Private browsing / localStorage disabled: the try/catch falls through
+ * to generating a per-load random ID (as before), so the app still
+ * works — it just loses refresh persistence, which is the expected
+ * degradation in private mode.
+ */
+const SESSION_ID_STORAGE_KEY = 'plansync-session-id';
+
+function loadOrCreateSessionId(): string {
+  if (typeof window === 'undefined') return 'ssr';
+  try {
+    const stored = window.localStorage.getItem(SESSION_ID_STORAGE_KEY);
+    if (stored && stored.startsWith('web-')) return stored;
+  } catch {
+    /* localStorage unavailable (e.g. private mode) — fall through */
+  }
+  const fresh = `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  try {
+    window.localStorage.setItem(SESSION_ID_STORAGE_KEY, fresh);
+  } catch {
+    /* ignore */
+  }
+  return fresh;
+}
+
 export function Chat() {
-  // Stable session id for the lifetime of this page load
-  const [sessionId] = useState(() => {
-    if (typeof window === 'undefined') return 'ssr';
-    return `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-  });
+  // Stable session id — persisted to localStorage so a refresh returns
+  // to the SAME session (with full hydration from the backend event log)
+  // instead of orphaning the old session and starting a fresh one.
+  const [sessionId] = useState(loadOrCreateSessionId);
 
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [journey, setJourney] = useState<JourneyStep[]>([]);
@@ -172,6 +211,20 @@ export function Chat() {
   const [memoryToasts, setMemoryToasts] = useState<Array<{ id: string; key: string }>>([]);
   const [inputValue, setInputValue] = useState('');
   const [uploading, setUploading] = useState(false);
+  /**
+   * Hydration state — tells the user what kind of session this is:
+   *   - 'loading'    → initial mount, still fetching the event log
+   *   - 'fresh'      → no prior events, greeting the user as a new session
+   *   - 'resumed'    → events were replayed, session resumed cleanly
+   *   - 'mid-stream' → refresh happened while the agent was mid-response;
+   *                    the replay ended on a non-terminal event, show a
+   *                    small "check for updates" banner so the user can
+   *                    re-fetch /events and append whatever arrived after
+   *                    the refresh
+   */
+  const [hydrationMode, setHydrationMode] = useState<
+    'loading' | 'fresh' | 'resumed' | 'mid-stream'
+  >('loading');
 
   // The execution plan is collapsed by default — it's pinned at the top
   // of the agent column (sticky) and would eat too much vertical space
@@ -608,23 +661,163 @@ export function Chat() {
     messagesRef.current = messages;
   }, [messages]);
 
-  // ---------- Auto-start on mount ----------
+  // ---------- Mount: hydrate from backend event log OR start fresh ----------
+  //
+  // On every page load we try to reconstruct prior state from the Redis
+  // event log at /session/:id/events. If there are events, we replay them
+  // through `handleAgentEvent` — the same function that processes live
+  // streaming events. This rebuilds reasoning bubbles, tool call lines,
+  // display components, journey state, and any pending approval EXACTLY
+  // as they were before the browser refresh.
+  //
+  // No replay-specific rendering logic — the state-derivation code path
+  // is identical to live streaming. If a bug exists, it exists in both.
+  //
+  // If the event log is empty, it's either a fresh session (first visit,
+  // or new sessionId after "New session" button) OR a session that
+  // expired via TTL. Either way we send the INITIAL_USER_MESSAGE to
+  // kick off the greeting flow.
+  //
+  // Last event tells us the state:
+  //   - 'done' | 'awaiting_user' | 'error' → terminal, chat idle
+  //   - anything else (text_delta, tool_*, etc.) → refresh hit mid-stream,
+  //     backend may still be running, show a banner
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const existing = await fetchJourney(sessionId);
+      const [eventsResult, journeyResult] = await Promise.all([
+        fetchSessionEvents(sessionId),
+        fetchJourney(sessionId),
+      ]);
       if (cancelled) return;
-      if (existing.steps && existing.steps.length > 0) {
-        setJourney(existing.steps);
+
+      const events = eventsResult.events;
+
+      if (events.length === 0) {
+        // Fresh session (or expired TTL). Hydrate journey if present
+        // (edge case — shouldn't normally happen if events is empty)
+        // and send the greeting.
+        if (journeyResult.steps && journeyResult.steps.length > 0) {
+          setJourney(journeyResult.steps);
+        }
+        setHydrationMode('fresh');
+        sendUserMessage(INITIAL_USER_MESSAGE, { showInList: false });
+        return;
       }
-      sendUserMessage(INITIAL_USER_MESSAGE, { showInList: false });
+
+      // Resumed session — replay every event through handleAgentEvent.
+      // Each event updates state via the same setters used during live
+      // streaming, so the result is bit-for-bit identical to what the
+      // user saw before the refresh.
+      for (const ev of events) {
+        handleAgentEvent(ev);
+      }
+
+      // Force streaming state to settle. handleAgentEvent only sets
+      // streaming=false on terminal events (done/awaiting/error); if
+      // the last event was a text_delta or tool_use_start (mid-stream
+      // refresh), streaming would still be true. We want it false so
+      // the user can type / interact.
+      setStreaming(false);
+
+      // Clear the current reasoning ref so a new reasoning bubble is
+      // created on the next text_delta instead of appending to the
+      // (possibly truncated) last one from before the refresh.
+      currentReasoningIdRef.current = null;
+      currentReasoningStartedAtRef.current = null;
+
+      // Remember how many events we've already replayed so the
+      // "check for updates" handler only appends NEW events.
+      seenEventCountRef.current = events.length;
+
+      // Classify the hydration outcome based on the last event.
+      const last = events[events.length - 1];
+      const isTerminal =
+        last.type === 'done' ||
+        last.type === 'awaiting_user' ||
+        last.type === 'error';
+      setHydrationMode(isTerminal ? 'resumed' : 'mid-stream');
+
+      // Don't send INITIAL_USER_MESSAGE — we're resuming an existing
+      // conversation. The user sees the full history and picks up
+      // where they left off.
     })();
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ---------- Handlers: New session + Check for updates ----------
+
+  /**
+   * "New session" button handler — clears localStorage and reloads the
+   * page. The next mount will generate a fresh sessionId and start the
+   * greeting flow. The old session's events stay in Redis until the
+   * 7-day TTL expires, but are unreachable because we've forgotten the
+   * ID.
+   *
+   * We also best-effort DELETE the old events log so we don't leave
+   * orphan data behind — but if that call fails, the reload still
+   * proceeds (TTL will handle cleanup eventually).
+   */
+  const handleNewSession = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const confirmed = window.confirm(
+      'Start a new session?\n\nYour current conversation will be cleared and you\'ll begin fresh with the agent.'
+    );
+    if (!confirmed) return;
+
+    // Fire-and-forget: tell the backend to drop the old events log.
+    // Not critical — TTL handles it if this fails.
+    void clearSessionEvents(sessionId);
+
+    // Clear localStorage so the next mount generates a fresh ID.
+    try {
+      window.localStorage.removeItem(SESSION_ID_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+
+    // Reload — mount effect will now hit the "fresh session" branch.
+    window.location.reload();
+  }, [sessionId]);
+
+  /**
+   * "Check for updates" handler — for the mid-stream refresh case.
+   * Re-fetches the event log and appends any events that arrived after
+   * the initial mount replay. This lets the user pull in events emitted
+   * by a backend loop that was still running when they refreshed.
+   *
+   * We track "events seen so far" via a ref on initial replay count,
+   * then only replay events at index >= seenCount. Conservative — a
+   * missing event never gets replayed twice.
+   */
+  const seenEventCountRef = useRef<number>(0);
+  const handleCheckForUpdates = useCallback(async () => {
+    const { events } = await fetchSessionEvents(sessionId);
+    const newEvents = events.slice(seenEventCountRef.current);
+    if (newEvents.length === 0) {
+      // Nothing new yet — quick visual feedback that we checked
+      return;
+    }
+    for (const ev of newEvents) {
+      handleAgentEvent(ev);
+    }
+    seenEventCountRef.current = events.length;
+
+    // Re-classify hydration mode based on the new last event
+    const last = events[events.length - 1];
+    const isTerminal =
+      last && (last.type === 'done' || last.type === 'awaiting_user' || last.type === 'error');
+    if (isTerminal) {
+      setStreaming(false);
+      setHydrationMode('resumed');
+      currentReasoningIdRef.current = null;
+      currentReasoningStartedAtRef.current = null;
+    }
+  }, [sessionId, handleAgentEvent]);
 
   // ---------- Classify messages into sides (memoized) ----------
 
@@ -797,12 +990,53 @@ export function Chat() {
               Rocketlane Project Plan Agent
             </span>
           </div>
-          <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-            <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-            <span className="font-medium">Connected</span>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleNewSession}
+              disabled={streaming}
+              title="Clear the current conversation and start a new session"
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all',
+                'bg-surface-container-low/70 border border-outline-variant/40 text-on-surface-variant',
+                'hover:border-primary/40 hover:text-primary hover:bg-primary/5',
+                'disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-outline-variant/40 disabled:hover:text-on-surface-variant disabled:hover:bg-surface-container-low/70'
+              )}
+            >
+              <span className="material-symbols-outlined text-sm">add_circle</span>
+              <span>New session</span>
+            </button>
+            <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+              <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
+              <span className="font-medium">Connected</span>
+            </div>
           </div>
         </div>
         {journey.length > 0 && <JourneyStepper steps={journey} />}
+        {hydrationMode === 'mid-stream' && (
+          <div className="border-t border-warning/20 bg-warning/5">
+            <div className="max-w-screen-2xl mx-auto px-6 py-2 flex items-center gap-3">
+              <span className="material-symbols-outlined text-warning text-base">
+                sync_problem
+              </span>
+              <div className="flex-1 min-w-0 text-xs text-on-surface-variant">
+                <span className="font-semibold text-warning">
+                  Reconnected mid-response.
+                </span>{' '}
+                The agent may have kept working after the refresh — click to
+                pull any new updates.
+              </div>
+              <button
+                type="button"
+                onClick={handleCheckForUpdates}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-warning/10 text-warning border border-warning/30 hover:bg-warning/20 transition-colors"
+              >
+                <span className="material-symbols-outlined text-sm">refresh</span>
+                Check for updates
+              </button>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* ---------- Main split area ---------- */}
