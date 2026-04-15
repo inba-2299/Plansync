@@ -87,9 +87,10 @@ const config: Config = {
         // Reflection card uses tertiary purple
       },
       fontFamily: {
-        headline: ['Manrope', 'system-ui', 'sans-serif'],
-        body: ['Inter', 'system-ui', 'sans-serif'],
-        label: ['Inter', 'system-ui', 'sans-serif'],
+        // CSS variables are populated by next/font/google in app/layout.tsx
+        headline: ['var(--font-manrope)', 'Manrope', 'system-ui', 'sans-serif'],
+        body: ['var(--font-inter)', 'Inter', 'system-ui', 'sans-serif'],
+        label: ['var(--font-inter)', 'Inter', 'system-ui', 'sans-serif'],
         mono: [
           'ui-monospace',
           'SFMono-Regular',

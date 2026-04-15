@@ -27,9 +27,6 @@ export function ToolCallLine({
 }: ToolCallLineProps) {
   const [expanded, setExpanded] = useState(false);
 
-  // Friendly label for the tool name
-  const friendlyName = name.replace(/_/g, ' ');
-
   // Detect error in result summary
   const isError = result?.toLowerCase().startsWith('error:') ?? false;
 
