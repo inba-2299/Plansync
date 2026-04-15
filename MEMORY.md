@@ -205,4 +205,153 @@ The agent INFERRED (from the memory rule in the system prompt) that the API key 
 
 ---
 
-## Session 3+ — (to be filled in as sessions happen)
+## 2026-04-15 — Session 3: Frontend UI rebuild + Vercel build fix
+
+### Context at start
+Session 2 ended at 3 AM with the backend feature-complete and verified end-to-end against production (real Rocketlane project created by the agent with zero approval resumes). The only thing left was the frontend — the Vercel deployment was still the Hour 0 throwaway (purple button, basic chat). Session 3's job: rebuild the UI to match the Google Stitch aesthetic, then move onto the remaining priorities (Custom App, BRD, submit).
+
+Mid-session the user raised 5 product decisions for discussion:
+1. Lessons-learned feedback loop + admin approval of lessons before they merge
+2. Admin portal `/admin` (Basic Auth protected)
+3. Session history across visits (without Supabase)
+4. Duplicate project detection
+5. Create-or-update project flow (not just create-new)
+
+All 5 deferred to Session 4 by agreement; Session 3 stayed focused on the UI.
+
+### Decision: skip Supabase, stay with Upstash Redis for Session 3
+**What changed:** Confirmed we're not moving to Supabase for session persistence or admin features. Stay on Upstash Redis.
+
+**Why:** Supabase adds a whole persistence layer (Postgres + auth + Storage), a new env var surface, and a migration cost that doesn't fit the 1-day remaining window. Upstash already works, sessions already persist for 7 days, and the admin portal can run directly off Redis keys (`session:*:*`). We explicitly rejected moving to Supabase for this submission.
+
+**Rejected:** Switching to Supabase "because it's more production-grade." The 7-day Redis TTL is enough for the demo window, and post-submission migration to Supabase (if we keep this as a real product) is a 1-2 day rework — not a submission blocker.
+
+### Decision: 7-day session TTL, admin-configurable later
+**What changed:** `agent/src/memory/redis.ts` — `SESSION_TTL_SECONDS` bumped from 48h to 7 days. Shipped as v0.1.3 (commit `047cbcd`).
+
+**Why:** Janani may run the demo multiple times over a few days. 48h is too tight — a Friday demo wouldn't survive to Monday. 7 days is the right default; anything longer risks Redis bloat and creates data governance questions.
+
+**Admin-configurable later:** The admin portal (Session 4) will expose TTL as a setting so it's not hardcoded forever.
+
+**Rejected:** 30 days (Redis bloat, no reason), permanent (data governance, memory costs), per-session TTL at creation time (overengineered for a 1-day feature).
+
+### Decision: Admin portal is a "show-off" feature, not user-facing
+**What changed:** Agreed that `/admin` is just for us (Inbaraj + evaluator) to see what's going on. Not advertised to end users. HTTP Basic Auth is sufficient — no need for full OAuth, per-user accounts, role-based access, etc.
+
+**Why:** The point is to demonstrate operational visibility, not to ship a multi-tenant admin product. Basic Auth is 10 lines of middleware; OAuth + a user table is a day of work. For a take-home, Basic Auth also makes the narrative cleaner: "single admin credential, stored as env vars, used for internal debugging."
+
+**Scope for Session 4 admin:**
+- Model selection (swap Sonnet for Haiku/Opus per session)
+- Settings: TTL, max turns, rate limits
+- Session list with artifact previews
+- Lessons-learned review queue (approve before merge into knowledge base)
+
+**Deferred from Session 4 admin:**
+- Multi-user auth
+- Audit log
+- Exportable session archives
+- Billing / usage metrics
+
+### Decision: chat-first single-page UI, NOT the multi-page Stitch layout
+**What changed:** Google Stitch generated 4 separate dashboard screens (`agent_setup`, `agent_chat_upload`, `plan_validation`, `execution_monitor`). I kept the visual language (blue primary, clean cards, typography, plan tree layout, stats panels) but refused to port the multi-page structure.
+
+**Why:** The agent architecture is fundamentally single-page: one long conversation with streaming reasoning, inline tool calls, and agent-emitted cards appearing in the chat timeline. A multi-page wizard would contradict the agent invariants (frontend has zero business logic, state is reported by the agent not enforced against it). Porting Stitch's page flow would have required a frontend state machine — exactly what we deleted from the PRD in Session 1.
+
+**Resolution:** Use Stitch as a visual reference for colors, components, typography, and individual card designs (`PlanReviewTree`, `PlanIntegrityPanel`, `ProgressFeed`). Don't use it for layout or navigation. Everything lives in `Chat.tsx` and appears inline.
+
+**New addition from Stitch:** `PlanIntegrityPanel` — the side card with confidence score + validation checkmarks. Didn't exist in the original plan; added during this rebuild because it makes validation state visible and matches the agent's `validate_plan` tool output naturally.
+
+### Decision: `ApprovalPrompt` special-cases the API key question
+**What changed:** When the agent calls `request_user_approval` with a question that includes "API key" (or the context payload indicates it's an API-key ask), the frontend renders the `ApiKeyCard` instead of the generic approval chips. The `ApiKeyCard` POSTs to `/session/:id/apikey` directly (doesn't go through the agent message pipeline) and then resumes the agent with a clean `uiAction`.
+
+**Why:** We already decided in Session 2 that the API key must never pass through the conversation history. The frontend already has a dedicated endpoint for storing it. The `ApprovalPrompt` would otherwise pass the key as a string into the next agent turn as a `tool_result` content — that's exactly what we're trying to avoid.
+
+**Implementation:** The `ApprovalPrompt` component has an `isApiKeyQuestion` check on the question text. If true, render `ApiKeyCard` instead. Both paths call back to `Chat.tsx` via the same `onApprove(uiAction)` callback.
+
+**Lesson:** The agent-reports-state pattern doesn't mean the frontend is completely dumb. The frontend can pattern-match on tool call shapes to provide better UX for specific cases, as long as it never overrides the agent's *decisions* — just its *rendering*. Classifying the approval type as "generic option chips" vs "API key card" is rendering.
+
+### Lesson: Material Symbols requires BOTH the @import AND a CSS class
+**What happened:** On the first frontend rebuild, Material Symbols icons rendered as literal text — `"bolt"`, `"verified_user"`, `"arrow_upward"` — instead of the glyphs. Two separate bugs compounded:
+
+1. `@import url(...)` for the fonts was placed AFTER `@tailwind base; @tailwind components; @tailwind utilities;` in `globals.css`. CSS spec: `@import` must come before any other rules in the file. Tailwind's directives count as "other rules," so the browser silently ignored the imports. Fix: moved `@import` to the top of the file.
+
+2. Even with the font loaded, Material Symbols needs a specific CSS class on every element that uses it. The class declares `font-family: 'Material Symbols Outlined'` + `font-feature-settings: 'liga'` + ligature rendering. Without this, the browser treats `<span>bolt</span>` as the literal text "bolt" (font is loaded but not applied). Fix: added the full `.material-symbols-outlined` class definition to `globals.css`.
+
+**Lesson:** Icon fonts have TWO requirements: (1) the font is loaded, (2) an explicit CSS class tells the browser to USE it as an icon font with ligature rendering. Miss either one and you get literal text. Test the first icon render early before building 10 components that all depend on it.
+
+### Lesson: Vercel's ESLint config is stricter than `next dev`
+**What happened:** The UI built fine locally with `npm run dev`. Pushed to Vercel — build failed with:
+```
+./components/ToolCallLine.tsx
+31:9  Error: 'friendlyName' is assigned a value but never used.
+./app/layout.tsx
+24:9  Warning: Custom fonts not added in `pages/_document.js` will only load for a single page.
+28:9  Warning: Custom fonts not added in `pages/_document.js` will only load for a single page.
+```
+
+The unused var was a leftover from an earlier refactor. Local dev silently ignored it because `next dev` runs TypeScript in loose mode; Vercel's build runs `next lint` with the full ESLint config, which treats unused vars as errors.
+
+The font warnings were about `<link rel="stylesheet">` tags I'd added in `layout.tsx` as a backup path for the Material Symbols fix. Next.js wants you to use `next/font/google` instead so it can self-host and preload fonts. Vercel's build promotes these warnings to errors.
+
+**Fix:**
+1. Removed the unused `friendlyName` const.
+2. Ported Inter + Manrope to `next/font/google` with CSS variables (`--font-inter`, `--font-manrope`).
+3. Updated `tailwind.config.ts` fontFamily to reference the variables first.
+4. Dropped the redundant Inter/Manrope `@import` from `globals.css` (next/font owns them now).
+5. Material Symbols stays as `@import` — next/font doesn't handle icon fonts.
+
+**Lesson 1:** Always run `npm run build` locally before pushing. `next dev` and `next build` have different strictness levels. 30 seconds of local build would have saved a broken Vercel deploy.
+
+**Lesson 2:** `next/font/google` is the Next.js-approved way to load Google Fonts. `<link>` tags trigger a lint warning that Vercel treats as an error. The correct pattern:
+```tsx
+import { Inter } from 'next/font/google';
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
+<html className={inter.variable}>
+```
+
+**Lesson 3:** `next/font/google` does NOT work for icon fonts (Material Symbols, Font Awesome, etc.). Icon fonts must go through `@import` in CSS — and must be placed before `@tailwind` directives.
+
+### Lesson: Playwright MCP is the right tool for visual end-to-end verification
+**What happened:** After the UI rebuild, I ran a visual end-to-end test using the Playwright MCP. Opened the page in a real Chromium browser on localhost:3000 pointing at the Railway backend, watched the agent stream through its flow, took a screenshot.
+
+**Why this was valuable:** This caught the Material Symbols literal-text bug AND the fonts-not-loading bug in a single test pass — both invisible to a text-based "does the page load" check. A screenshot is worth 1000 tool calls when the failure mode is "visually broken."
+
+**Lesson:** When rebuilding UI components, always take a screenshot after the first full render. Don't trust that "it compiles and loads" means it looks right.
+
+### Lesson: The CSS @import ordering rule bit us twice
+**What happened:** First bug was @import after @tailwind. I fixed that. Then when porting to `next/font/google`, I left the old Inter/Manrope `@import` in `globals.css` as "belt and braces." Vercel's build then flagged the next/font warnings, I fixed those, but the redundant `@import` was still there loading fonts a second time from Google's CDN. The build worked fine but it was wasteful.
+
+**Fix:** Dropped the redundant `@import`. Only Material Symbols remains (because next/font can't handle it).
+
+**Lesson:** When you switch font loading strategies, remove the old path completely. Don't layer them. "Belt and braces" for CSS imports is a code smell — one of them is dead code, and the dead code costs a network round-trip on every page load.
+
+### Lesson: CORS allow-list must include localhost explicitly
+**What happened:** Mid-rebuild, the frontend on localhost:3000 got "Failed to fetch" when calling the Railway backend. CORS error. The Railway `ALLOWED_ORIGIN` env var only had `https://plansync-tau.vercel.app,https://*.rocketlane.com` — no localhost.
+
+**Why it broke this session:** In Session 2, user had recreated the Railway project from scratch after a GitHub App permissions drama. The env vars were all re-added, but localhost was missed.
+
+**Fix:** User updated `ALLOWED_ORIGIN` to `https://plansync-tau.vercel.app,http://localhost:3000,https://*.rocketlane.com` and redeployed.
+
+**Lesson:** Always include both `http://localhost:3000` AND the production URL in `ALLOWED_ORIGIN` for any dev-plus-prod workflow. Better: split into `ALLOWED_ORIGIN` (prod) + `DEV_ORIGIN` (localhost), or just comma-list them. Either way, document it in the env setup checklist.
+
+### Decision: 5 product items deferred to Session 4 (not cut)
+**What changed:** User raised 5 items for discussion mid-session. We discussed each, agreed to defer all 5 to Session 4 but kept them on the plan (no scope cuts):
+
+1. **Lessons-learned feedback loop** — agent gets smarter across sessions. Admin reviews lessons before they merge into the global knowledge base. Scope: new `record_lesson` tool + `knowledge-base.json` file + admin review UI. ~2 hours.
+2. **Admin portal `/admin`** — Basic Auth, model selection, settings, session list, lessons review. ~2-3 hours.
+3. **Session history across visits** — keep deferred (was already deferred in Session 1). 7-day TTL is enough for the demo window. Post-submission rework.
+4. **Duplicate project detection** — system prompt addition + check in `get_rocketlane_context` output. ~30 min.
+5. **Create-or-update flow** — 5 new Rocketlane update tools (`update_project`, `update_phase`, `update_task`, `delete_task`, `move_task_to_phase`) + diff view. ~1.5 hours.
+
+Combined: ~6 hours of Session 4 work. Plus Custom App (30 min) + BRD + submit (~1.5 hours) = ~8 hours total for Session 4. Tight but feasible with the deadline 2026-04-16.
+
+**Why defer instead of cut:** User was explicit in Session 1 — "please don't exclude items thinking about the deadline." These are all real product decisions, not nice-to-haves. The backend is done, so Session 4 can focus entirely on product additions + shipping.
+
+### Lesson: Mid-build doc pauses cost less than I thought
+**What happened:** I started writing this doc update mid-way through Session 3, paused because of the Vercel build error, fixed the build, then resumed. The context I'd built up for the doc writing was still intact because the fix was self-contained (unused var + font loader).
+
+**Lesson:** Doc updates don't need to be "everything at the very end." If the session has natural pauses (waiting on a deploy, waiting on the user to test something), use those pauses to start doc updates. You lose less context than you'd think.
+
+---
+
+## Session 4+ — (to be filled in as sessions happen)

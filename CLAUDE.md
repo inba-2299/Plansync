@@ -17,7 +17,8 @@ Plansync is an AI agent that reads a project plan CSV and creates it as a fully 
 | `MEMORY.md` | Decision log, architecture iterations, what we tried and rejected, lessons learned per session | Understanding *why* the current design exists (historical context) |
 | `CONTEXT.md` | What was just completed, what's next, open questions, environment setup status | Picking up where the last session left off |
 | `README.md` | High-level project overview, quick start, repo layout | Onboarding humans |
-| `plansync_google_stitch design/` | Google Stitch visual design reference — 4 screens (agent_setup, agent_chat_upload, plan_validation, execution_monitor). Multi-page dashboard aesthetic; we adopt the visual language + component designs but keep our single-page chat architecture. | Tomorrow AM frontend UI work |
+| `plansync_google_stitch design/` | Google Stitch visual design reference — 4 screens (agent_setup, agent_chat_upload, plan_validation, execution_monitor). Multi-page dashboard aesthetic; we adopted the visual language + component designs in Session 3 but kept our single-page chat architecture. | Visual reference when tweaking existing components or designing new ones |
+| `docs/screenshots/ui-rebuild-verified.png` | Screenshot from the Session 3 Playwright verification run — shows the fresh chat UI, JourneyStepper, and `ApiKeyCard` rendering correctly on localhost against the Railway backend | Sanity-check "what the UI should look like" |
 
 ## Critical invariants — do not break these
 
@@ -52,7 +53,7 @@ See `docs/PLAN.md` § "Tools" for the full table and rationale.
 - `UPSTASH_REDIS_REST_URL`
 - `UPSTASH_REDIS_REST_TOKEN`
 - `ENCRYPTION_KEY` (32 bytes base64, for AES-GCM of the Rocketlane API key at rest)
-- `ALLOWED_ORIGIN` (comma-separated: `https://plansync.vercel.app,*.rocketlane.com`)
+- `ALLOWED_ORIGIN` (comma-separated, must include both prod and localhost for dev-plus-prod flow: `https://plansync-tau.vercel.app,http://localhost:3000,https://*.rocketlane.com`)
 
 **Vercel frontend (`frontend/`):**
 - `NEXT_PUBLIC_AGENT_URL` (the Railway deployment URL)
@@ -64,6 +65,9 @@ Local dev: create `.env` in `agent/` and `.env.local` in `frontend/`. Never comm
 ```bash
 # Frontend local dev
 cd frontend && npm run dev                 # → http://localhost:3000
+
+# Frontend local BUILD (use this before pushing — Vercel's lint is stricter than `next dev`)
+cd frontend && npm run build               # catches unused vars + no-page-custom-font warnings
 
 # Agent backend local dev
 cd agent && npm run dev                    # → http://localhost:3001 (hot-reload via tsx)
@@ -93,7 +97,8 @@ cd custom-app && bash build.sh             # Produces plansync-custom-app.zip
 2. Read `CONTEXT.md` — see what's in flight, what's next, open questions
 3. Read `MEMORY.md` — understand past decisions so you don't re-litigate them
 4. Read `docs/PLAN.md` — refresh on the full architecture (only read the relevant sections)
-5. Check the Rocketlane tracking tasks (project 5000000073039, phase "Agent Development") for current status
+5. Skim `docs/DESIGN.md` — read the sections relevant to what you're about to touch (don't re-read the whole thing every session)
+6. Check the Rocketlane tracking tasks (project 5000000073039, phase "Agent Development") for current status
 
 **During the session:**
 - If you're about to change architecture direction, document the reason in `MEMORY.md` before proceeding
@@ -118,6 +123,7 @@ cat CLAUDE.md       # this file
 cat CONTEXT.md      # what's in flight
 cat MEMORY.md       # why things are the way they are
 less docs/PLAN.md   # the build plan
+less docs/DESIGN.md # formal system design (read only the relevant section)
 
 # 2. Sync with remote
 git pull

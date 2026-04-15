@@ -6,169 +6,163 @@
 
 ## Last updated
 
-**2026-04-15, ~3 AM — end of Session 2 (all-nighter).**
+**2026-04-15, ~early afternoon — end of Session 3 (frontend UI rebuild + build fix).**
 
 ## Status
 
-**BACKEND IS COMPLETE AND VERIFIED END-TO-END ON PRODUCTION.** Everything planned for tonight got done, including Hour 5.5–7 (real end-to-end run).
+**FULL STACK IS LIVE END-TO-END.** Frontend UI matches the Google Stitch aesthetic. Backend is unchanged from Session 2 (already feature-complete). The one remaining gap tonight was the UI — that's now done.
 
-- Railway: https://plansync-production.up.railway.app running **v0.1.2** with all 20 tools + real ReAct loop + `/upload` + `/session/:id/apikey` endpoints
-- **First real CSV test PASSED** with zero approval resumes. Created real Rocketlane project `5000000074663` "Plansync E2E Test" containing:
-  - 1 phase (Discovery, phaseId 5000000190202, dates 2026-04-20 → 2026-04-22)
-  - 2 tasks (Kickoff meeting taskId 5000001557534, Requirements doc taskId 5000001557535)
-  - 1 milestone (Sign-off taskId 5000001557536, type MILESTONE)
-  - 2 dependencies (Requirements → Kickoff, Sign-off → Requirements)
-  - Verified via MCP search — all entities exist in inbarajb.rocketlane.com
-- Agent ran through the full flow autonomously: journey init → execution plan → parse_csv → validate_plan (all 11 checks passed) → display_plan_for_review → create_project → create_phase → create_tasks_bulk → add_dependency → display_completion_summary → end_turn
+- **Railway backend** v0.1.3: https://plansync-production.up.railway.app — 20 tools + real ReAct loop, 7-day session TTL
+- **Vercel frontend** (just redeployed from commit `d524250`): https://plansync-tau.vercel.app — new chat-first UI, 13 components matching Stitch designs, SSE streaming, agent-emitted cards
+- **Visual end-to-end test passed locally** (Playwright on localhost:3000 → Railway prod) earlier in the session. Screenshot at `docs/screenshots/ui-rebuild-verified.png` shows the chat, journey stepper, and `ApiKeyCard` rendering correctly with proper fonts + icons.
+- **Vercel build was broken for ~30 min** mid-session (ESLint error on an unused var + custom-font warnings). Fixed in commit `d524250` by switching Inter + Manrope to `next/font/google` and removing the unused const. Local `npm run build` now passes clean.
+- Inbaraj is about to click through the live Vercel URL to verify everything works in prod.
 
-**Next session is Tomorrow AM.** Focus: frontend UI rebuild matching the Stitch designs. The backend needs no more work unless a UI integration surfaces an edge case.
+**Next session is Session 4.** Focus: 5 product decisions discussed this morning, then Custom App .zip + BRD + submit.
 
-## Just completed (Session 2 — all-nighter, commits in reverse order)
+## Just completed (Session 3 — commits in reverse order)
 
-1. **Hour 4–5.5 build** (commit `f39119e`) — 26 files, 3,403 lines, all type-checked clean:
-   - Group D tool: `request_user_approval` (the only blocking tool)
-   - Group E tools: `create_rocketlane_project`, `create_phase`, `create_task`, `create_tasks_bulk`, `add_dependency`
-   - Group F tools: `get_task`, `retry_task`
-   - Group G tools: `display_plan_for_review`, `display_progress_update`, `display_completion_summary`
-   - Real ReAct loop (`agent/src/agent/loop.ts`) with streaming + dispatch + lazy RocketlaneClient per turn + tool execution + blocking-tool handling
-   - Route refactor (`agent/src/index.ts`): `/agent` now uses the real loop, `/upload` parses CSV/XLSX via SheetJS into the artifact store, `/session/:id/journey` for stepper hydration on reconnect, per-session lock via `acquireLock`
-   - Session meta now carries `rlProjectId` (set after `create_rocketlane_project` succeeds)
-2. **Stitch designs reviewed** — committed the full `plansync_google_stitch design/` folder to the repo. Aesthetic and rich component patterns documented; will inform Tomorrow AM UI rebuild. Key takeaways: use clean blue+white SaaS aesthetic, chat-bubble pattern, rich cards for plan review / approval / progress / completion / reflection. Skip sidebar nav + multi-page routing (out of scope).
-3. **`docs/DESIGN.md`** (commit `9646527`) — formal system design doc. 12 architectural decisions with trade-off analysis, 11 risk matrix, data model, API contracts, control flow, reliability strategy. Read-only reference for future sessions.
-4. **Hour 2.5–4 build** (commit `d78e8a7`) — 19 files, 2,514 lines:
-   - Foundation types (`agent/src/types.ts`)
-   - Memory infrastructure (`redis, session, artifacts, remember, lock`)
-   - Crypto lib (AES-256-GCM for RL API key at rest)
-   - SSE helpers
-   - System prompt — one static prompt composing identity + PM knowledge + PM tool export patterns + CORRECTED RL API reference (reflects test-rl.ts findings) + full Autonomy Matrix + planning/memory/reflection/journey/runtime-recovery rules
-   - Group A tools: `parse_csv`, `get_rocketlane_context`, `query_artifact`
-   - Group B tools: `validate_plan` (all 11 checks), `create_execution_plan`, `update_journey_state`, `reflect_on_failure`
-   - Group C tools: `remember`, `recall`
-   - Dispatcher + 9 tool schemas
-5. **Hour 1–2.5 build** (commit `e115507`) — 1,994 lines:
-   - Rocketlane REST client (`agent/src/rocketlane/client.ts`) with retries, 429 Retry-After backoff, 5xx exponential backoff, structured `RocketlaneError`, request timeout, injectable logger
-   - Rocketlane types
-   - `agent/scripts/test-rl.ts` — 12-scenario end-to-end API verification. **ALL 12 PASSED** against the real RL workspace. Captured actual response shapes in `agent/rl-api-contract.json`.
-6. **Key RL API findings** (vs PRD §9):
-   - Pagination uses `?pageSize=N`, NOT `?limit=N` (using `limit` triggers 500)
-   - `/users/me` does NOT exist — use `GET /users` and filter by `type: TEAM_MEMBER`
-   - Response envelope is `{data: [...], pagination: {...}}`
-   - User email field is `email` on `/users` but `emailId` on project `owner`
-   - Depth-3 nesting confirmed working via `parent.taskId` chains
-   - `POST /projects/{id}/archive` works (not documented in PRD but used for cleanup)
-7. **Railway deployment drama** — solved:
-   - User earlier reconnected GitHub for collaborator SSH push access, which accidentally revoked Railway's GitHub App permissions on the repo
-   - Auto-deploy stopped working for commits `e115507`, `9646527`, `f39119e` (all 3 Hour 1-5.5 commits sat undeployed)
-   - User tried to reconnect Railway's Source but the search couldn't find the repo (Railway.app was logged in as a different GitHub user — "third account")
-   - **User's fix**: deleted the Railway project entirely and recreated a fresh one. The recreation picked up the latest commit (`f39119e`), deployed successfully, and LUCKILY got assigned the same public URL (`plansync-production.up.railway.app`)
-   - All 5 env vars are set on the new Railway project (anthropic, upstash url, upstash token, encryption key, allowed origin). Confirmed via `/health` endpoint returning all env booleans true.
-8. **Smoke test on production** — PASSED:
-   - POST `/agent` with `sessionId: smoke-1776201510`, `userMessage: "Hello! Initialize the journey stepper with the 6 standard steps and tell me what you are..."`
-   - Agent streamed SSE events correctly: `tool_use_start` for `update_journey_state`, then chunked `tool_input_delta` building up the JSON `{"steps": [{"id":"connect","label":"Connect","status":"pending"},{"id":"upload","label":"Upload","status":"pending"},{"id":"analyze","label":"Analyze"...`
-   - This confirms: real loop runs, dispatcher routes correctly, session load/save works, system prompt is being followed (Claude knew to call update_journey_state FIRST with the 6 standard steps because the system prompt says so), streaming SSE works end-to-end on Railway.
+1. **Vercel build fix** (commit `d524250`):
+   - Removed unused `friendlyName` const from `components/ToolCallLine.tsx` (ESLint hard error)
+   - Ported Inter + Manrope from `<link rel="stylesheet">` in `app/layout.tsx` to `next/font/google` (fixes `@next/next/no-page-custom-font` warnings that Vercel treats as errors)
+   - Each font now has a CSS variable: `--font-inter`, `--font-manrope`
+   - `tailwind.config.ts` fontFamily updated to reference those variables first with the raw name as fallback
+   - Dropped the redundant Inter/Manrope `@import` from `globals.css` (next/font owns them now)
+   - Material Symbols Outlined stays as `@import` in `globals.css` because it's an icon font (next/font/google doesn't handle icon fonts)
+   - Verified locally: `npm run build` → `✓ Compiled successfully`, no ESLint errors, no font warnings, home route 53.9 kB / 141 kB First Load
+2. **Frontend UI rebuild — 13 components + chat shell + theme + lib** (commit `c95aa5f`): 3,255 lines across 25 files. The biggest push of Session 3.
+   - **Timeline renderers** (`frontend/components/`):
+     - `Chat.tsx` (721 lines) — orchestrator. Holds `messages[]`, `journey`, `streaming`, `memoryToasts`, `inputValue` state. SSE event handler maps each event type to state updates. Auto-starts on mount with a greeting message. Renders header + JourneyStepper + scrollable messages + footer input. `DisplayComponentRenderer` routes `display_component` events to the right agent-emitted component.
+     - `MessageBubble.tsx` — user + assistant text bubbles
+     - `ReasoningBubble.tsx` — streaming reasoning bubble, auto-collapses when next `tool_use_start` fires
+     - `ToolCallLine.tsx` — one-liner for `tool_use` blocks, expandable to show input + result JSON
+   - **Agent-emitted components** (`frontend/components/agent-emitted/` — 10 components):
+     - `JourneyStepper.tsx` — sticky top stepper, Framer Motion transitions, reads `journey_update` events
+     - `ApiKeyCard.tsx` — password-masked input + "Establish Connection" button, POSTs to `/session/:id/apikey`
+     - `FileUploadCard.tsx` — drag-drop + Browse Files, POSTs to Next.js `/api/upload` route which forwards to Railway
+     - `ExecutionPlanCard.tsx` — renders agent's TODO list from `create_execution_plan` with status icons
+     - `PlanReviewTree.tsx` — collapsible tree (phases → tasks → subtasks → milestones), dependency badges
+     - `PlanIntegrityPanel.tsx` — confidence score + validation checkmarks (new — added after reviewing Stitch designs)
+     - `ApprovalPrompt.tsx` — clickable option chips with special case: if the approval is an "API key" question, renders the `ApiKeyCard` instead
+     - `ProgressFeed.tsx` — live progress bar + phase indicator during execution
+     - `ReflectionCard.tsx` — purple-bordered metacognition card showing observation / hypothesis / next_action
+     - `CompletionCard.tsx` — final stats + "View in Rocketlane" button
+   - **Theme + layout** (`frontend/tailwind.config.ts`, `frontend/app/globals.css`, `frontend/app/layout.tsx`):
+     - Full Material 3-style tonal palette ported from Stitch: primary `#173ce5`, secondary `#4648d4`, tertiary `#6a1edb`, surface `#faf8ff`, full tonal scale (fixed/fixed-dim/container-lowest/low/high/highest)
+     - Status colors: success `#198038`, warning `#d12771`, info `#08bdba`
+     - Typography: Manrope for headlines, Inter for body, system mono for code
+     - Custom shadows (`card-sm` / `card` / `card-lg` / `card-xl`) using tinted blue
+     - Animations: `fade-in`, `slide-up`, `pulse-slow`
+     - Border radius scale: 0.25rem → 2rem
+   - **Lib** (`frontend/lib/`):
+     - `event-types.ts` — mirror of the agent backend's `AgentEvent` union type
+     - `cn.ts` — clsx wrapper
+     - `agent-client.ts` (162 lines) — `sendToAgent` SSE reader, `storeRocketlaneApiKey`, `uploadPlanFile`, `fetchJourney`
+   - **Upload proxy** (`frontend/app/api/upload/route.ts`): Next.js API route forwarding multipart uploads to the Railway `/upload` endpoint. Keeps the Railway URL out of the browser.
+   - **Visual end-to-end test**: ran on localhost:3000 via Playwright MCP. Confirmed fonts loaded (Manrope + Inter via `next/font`), Material Symbols rendered (not literal text), chat auto-greeted, agent streamed through `update_journey_state` → rendered stepper → emitted `request_user_approval` → `ApiKeyCard` appeared with agent's question + "Enter API Key" CTA. Screenshot saved to `docs/screenshots/ui-rebuild-verified.png`.
+3. **Session TTL bump** (commit `047cbcd`, v0.1.3): `agent/src/memory/redis.ts` — `SESSION_TTL_SECONDS` bumped from 48h to 7 days (`7 * 24 * 60 * 60`). Agreed to make this admin-configurable later, but 7 days is the right default for the demo window.
 
-## What's next (Session 3 — Tomorrow AM)
+## What's next (Session 4)
 
-**Goal for Session 3**: Rebuild the frontend UI to match the Stitch aesthetic, then Custom App .zip + BRD + submit. Backend is done.
+**Goal**: Ship the 5 product decisions discussed this morning, then Custom App + BRD + submit.
 
-**~~Priority 1 — First real CSV test~~** ✅ DONE TONIGHT (commit `3d9c07d`). Real project `5000000074663` created in inbarajb.rocketlane.com. The 4-row test CSV (1 phase, 2 tasks, 1 milestone, 2 deps) ran clean, zero approval resumes. `agent/scripts/test-end-to-end.ts` can be re-run any time to verify the full stack.
+### Priority 1 — Duplicate detection (30 min)
+Add a rule to the system prompt so that when `get_rocketlane_context` returns the existing projects list, the agent checks for a duplicate project name. If found, the agent calls `request_user_approval` with options like "Overwrite", "Create new", "Abort". No new tool needed — this is purely a system prompt addition.
 
-**Priority 1 — Frontend UI rebuild (3-4 hours)**
+### Priority 2 — Admin portal `/admin` (2-3 hours)
+HTTP Basic Auth protected route. This is a "show-off" feature — just for us to see sessions and tweak settings, not for end users. Scope:
+- HTTP Basic Auth middleware (credentials from env vars)
+- Model selection (swap `claude-sonnet-4-5` for another model per-session)
+- Settings: session TTL, max turns, rate limit overrides
+- Session list with artifact previews
+- Admin URL: `https://plansync-production.up.railway.app/admin` (or separate subdomain)
 
-The current frontend is the Hour 0 throwaway (purple button, basic chat). Rebuild using the Stitch design aesthetic. Deferred from tonight.
+### Priority 3 — Lessons feedback loop + knowledge base (2 hours)
+The agent doesn't get smarter between sessions right now. Add a background "lessons" file that the agent reads at session start and writes to on notable events:
+- User corrects the agent's column mapping → the agent records "user's CSVs typically have `task_name` in column 3" as a lesson
+- Agent encounters an API field rename → records the fix from `web_search` as a permanent lesson (not just session-scoped `remember`)
+- Admin can review + approve lessons before they get merged into the knowledge base
+- New tool: `record_lesson(observation, lesson, scope: "session"|"global")`
+- System prompt section: "Prior lessons learned from previous sessions" populated from the knowledge base at session start
 
-Steps:
-1. Update Tailwind config with Rocketlane Carbon + Nitro color tokens (PRD §8.2) — or use the Stitch blue palette as a practical substitute
-2. Rewrite `frontend/app/page.tsx` with:
-   - Chat container
-   - Streaming reasoning bubbles (collapsible)
-   - ToolCallLine one-liners with expandable details
-   - SSE reader with auto-resume on `awaiting_user` → approval click → resume
-3. Build agent-emitted components in `frontend/components/agent-emitted/`:
-   - `JourneyStepper` (sticky top, reads `journey_update` events, Framer Motion transitions)
-   - `ApiKeyCard` — when agent emits `request_user_approval` for API key
-   - `FileUploadCard` — when agent asks for file, drag+drop + upload to backend
-   - `ExecutionPlanCard` — from `create_execution_plan` display_component event
-   - `PlanReviewTree` — from `display_plan_for_review`. Collapsible phases, milestone badges, dependency tags, assignee info (steal the Stitch layout)
-   - `PlanIntegrityPanel` — side card with confidence score + validation checkmarks (NEW, from Stitch — wasn't in original plan)
-   - `ApprovalPrompt` — from `request_user_approval`. Animated entry, clickable option chips, primary + secondary action pattern
-   - `ProgressFeed` — from `display_progress_update`. Phase-segmented progress bar + live action log
-   - `ReflectionCard` — from `reflect_on_failure`. Purple-bordered card showing observation/hypothesis/next_action
-   - `CompletionCard` — from `display_completion_summary`. Stats + "View in Rocketlane" link
-4. Wire SSE events to the right components in `frontend/lib/agent-client.ts`
-5. Deploy frontend to Vercel, update Railway `ALLOWED_ORIGIN` if URL changes
+### Priority 4 — Create or update flow (1.5 hours)
+Right now the agent only creates NEW projects. Users may want to update existing ones (add a phase to an in-flight project, sync a revised plan). Scope:
+- 5 new Rocketlane update tools: `update_project`, `update_phase`, `update_task`, `delete_task`, `move_task_to_phase`
+- Diff view: when duplicate detected + user chooses "Update existing", agent computes a diff between current state and new plan, renders a diff card, asks for approval before applying
+- System prompt addition: "If existing project detected AND user chooses update flow, compute diff → show → ask before mutating"
 
-**Priority 3 — Full Shard FM Engine CSV run (1 hour)**
-- Author the 62-row Shard FM Engine CSV from PRD §11
-- Run end-to-end against the live deployed stack
-- Fix any issues that come up
+### Priority 5 — Custom App .zip (30 min)
+- `custom-app/manifest.json` — Rocketlane Custom App manifest pointing at `https://plansync-tau.vercel.app?embed=1`
+- `custom-app/index.html` — minimal iframe shell (if Rocketlane requires self-contained bundle)
+- `custom-app/icon.svg`
+- `custom-app/build.sh` — produces `plansync-custom-app.zip`
+- Frontend: `?embed=1` handler to hide the app header when running inside Rocketlane
+- Test: install the .zip in inbarajb.rocketlane.com, open Plansync tab from a project, verify full run works inside the iframe
 
-**Priority 4 — Edge case tests (1 hour)**
-- Missing dates, ambiguous DD/MM, duplicate names, deep nesting, orphans
-- Circular dependency → verify agent reflects + fixes + re-validates
-- Force a task failure → verify `retry_task` recovers
-
-**Priority 5 — Rocketlane Custom App (30 min)**
-- `custom-app/manifest.json` + `index.html` (iframe shell) + `icon.svg`
-- `build.sh` → produces `plansync-custom-app.zip`
-- Frontend: add `?embed=1` handler to hide app header
-- Test the .zip in inbarajb.rocketlane.com
-- Open question for Inbaraj: confirm iframe wrapper approach vs hybrid bundle (see `docs/DESIGN.md` §15 question 1)
-
-**Priority 6 — BRD + submit**
-- Write BRD (1-2 pages) from `docs/DESIGN.md` + `docs/PLAN.md`
-- Upload to Rocketlane Spaces
-- Upload demo CSV
-- Upload Custom App .zip
+### Priority 6 — BRD + submit (1.5 hours)
+- Write BRD (1-2 pages) pulling from `docs/DESIGN.md` + `docs/PLAN.md`
+- Focus on: problem, approach, why it's agentic (21 tools + planning + memory + reflection + journey), demo link, repo link, Custom App .zip link
+- Upload BRD + demo CSV + Custom App .zip to Rocketlane Spaces
 - Submit to Janani
+- Deadline: 2026-04-16
 
-## Open questions for Inbaraj (Tomorrow AM)
+### Also nice-to-have (cut if time tight — but nothing in Priority 1-6 is cuttable)
+- Full Shard FM Engine CSV run (62 rows, 5 levels, PRD §11) for a bigger demo than the 4-row E2E test from Session 2
+- Edge case tests (missing dates, DD/MM ambiguity, circular dep reflection, retry recovery)
+- Rocketlane tracking task status updates (21 tasks in phase "Agent Development", still marked "To do")
+- Account consolidation (GitHub + Vercel + Railway to same GitHub account)
 
-- **Account consolidation** — deferred from tonight per Inbaraj's request. Move GitHub repo + Vercel to the same account as Railway for unified management. Not blocking tomorrow's work but recommended before submission.
-- **Custom App approach** — iframe wrapper (simple) vs hybrid self-contained bundle that auto-updates from Vercel (complex but offline-capable). Defer decision until we test Rocketlane's iframe sandbox limits tomorrow PM.
-- **Frontend brand name** — Stitch designs use "Architect AI" / "Project Curator" placeholders. We use "Plansync" — confirm.
-- **BRD format** — Rocketlane Spaces (PDF?) or a GitHub markdown doc?
+## Open questions for Inbaraj (Session 4)
+
+- **Admin portal credentials**: pick a username + password, set as env vars on Railway (`ADMIN_USER` + `ADMIN_PASS`)
+- **Knowledge base storage**: file in the repo (`knowledge-base.json`) or Redis key (`session:global:lessons`)? File is simpler, Redis is more robust. Probably file for now.
+- **Diff view rendering**: show as a side-by-side tree, inline diff within `PlanReviewTree`, or separate `PlanDiffCard` component?
+- **Custom App iframe sandbox**: untested — does Rocketlane apply strict CSP that breaks the iframe? Test tomorrow PM before committing to the approach.
+- **BRD format**: Rocketlane Spaces page (markdown-ish) or PDF upload?
 
 ## Environment state (production)
 
 | Service | Status | URL |
 |---|---|---|
-| Railway backend | **LIVE v0.1.0**, all env vars set, smoke-tested | https://plansync-production.up.railway.app |
-| Vercel frontend | LIVE (Hour 0 throwaway UI, pointing at Railway) | https://plansync-tau.vercel.app |
-| GitHub repo | Up to date at commit `f39119e` | https://github.com/inba-2299/Plansync |
+| Railway backend | **LIVE v0.1.3**, all env vars set, 7-day session TTL | https://plansync-production.up.railway.app |
+| Vercel frontend | **LIVE** from commit `d524250` (fresh UI, `next/font` working) | https://plansync-tau.vercel.app |
+| GitHub repo | Up to date at `d524250` | https://github.com/inba-2299/Plansync |
 | Rocketlane workspace | Inbarajb's Enterprise trial | https://inbarajb.rocketlane.com |
-| Upstash Redis | Connected and healthy (auth=true in /health) | — |
-| Anthropic API | Connected (anthropic=true in /health) | — |
+| Upstash Redis | Connected and healthy (session TTL 7d) | — |
+| Anthropic API | Connected (claude-sonnet-4-5) | — |
+
+**Railway env vars** (all set, confirmed via `/health`):
+- `ANTHROPIC_API_KEY`
+- `UPSTASH_REDIS_REST_URL`
+- `UPSTASH_REDIS_REST_TOKEN`
+- `ENCRYPTION_KEY`
+- `ALLOWED_ORIGIN` = `https://plansync-tau.vercel.app,http://localhost:3000,https://*.rocketlane.com`
 
 ## Environment state (local)
 
 | Thing | Status |
 |---|---|
-| `/Users/inbaraj/Downloads/plansync/` | Git repo synced to origin/main |
+| `/Users/inbaraj/Downloads/plansync/` | Git repo synced to `origin/main` at `d524250` |
 | `agent/.env` | Filled in with real values (never committed) |
 | `frontend/.env.local` | Filled in, pointing at Railway URL |
 | `agent/node_modules` | Installed |
 | `frontend/node_modules` | Installed |
-| `agent/dist` | Built successfully locally (verified) |
+| `frontend` local build | Passes clean (`npm run build` → compiled successfully) |
 
-## Commit history (Session 2)
+## Commit history (Session 3)
 
-- `f39119e` — Hour 4-5.5: Real ReAct loop + Group D/E/F/G tools + /upload endpoint
-- `9646527` — Add formal system design document (docs/DESIGN.md)
-- `d78e8a7` — Hour 2.5-4: Memory + system prompt + Group A/B/C tools (9 tools + dispatcher)
-- `e115507` — Hour 1-2.5: Rocketlane REST client + 12-scenario API verification
-- `3a6ea99` — Scaffold Hour 0: Next.js frontend + Express agent with streaming (from Session 1)
-- `3b09d2d` — Add .env.example templates (from Session 1)
-- `12c976e` — Scaffold Plansync monorepo with persistent context docs (from Session 1)
-- `cdc443b` — Initial upload of PRDs (pre-session)
+- `d524250` — Fix Vercel build: switch to next/font + drop unused var
+- `c95aa5f` — Frontend UI rebuild: 13 components matching Stitch aesthetic + chat shell
+- `047cbcd` — Session TTL: 48h → 7 days (v0.1.3)
 
-## Known issues / risks to watch tomorrow
+Session 2 commits (for context): `f6ae9a4` → `9646527` → `d78e8a7` → `e115507` → `3d9c07d`. See the Session 2 block in the old CONTEXT.md (git log) or MEMORY.md for what each one did.
 
-- **Vercel frontend is the old Hour 0 UI** — looks ugly, doesn't match Stitch designs. First thing to rebuild.
-- **No real end-to-end CSV test yet** — the smoke test only verified the backend wiring. We still need to prove the full pipeline (upload → parse → validate → approve → create → verify in Rocketlane) works in one continuous run. This is Priority 1 for Session 3.
-- **Account consolidation pending** — GitHub + Vercel + Railway split across 2-3 GitHub accounts. Messy but not blocking. Fix tomorrow before submission.
-- **Rocketlane tracking tasks not updated** — the 21 tracking tasks in RL phase "Agent Development" (phase ID 5000000188900) are still marked "To do". Should update status to "In progress" / "Completed" as we move through tomorrow's work. Low priority — nice-to-have for the submission story.
-- **Custom App iframe sandbox** — untested. Rocketlane may restrict `<iframe>` sources or apply strict CSP. Test tomorrow PM before committing to the approach.
+## Known issues / risks to watch in Session 4
+
+- **Vercel deploy just finished** — as of this write, Inbaraj is about to click through the live UI. If anything broke in prod (CORS, SSE buffering, font loading on a different domain than localhost), that's first to fix.
+- **No real end-to-end test on the new UI in production** — Session 2's end-to-end test used a POST-the-CSV-directly script. Session 3's visual test was localhost-only. Session 4 should do one clean run through the live Vercel UI against the live Railway backend, ideally with the Shard FM Engine 62-row CSV.
+- **Custom App iframe sandbox** — untested. Test in inbarajb.rocketlane.com before committing to the iframe approach.
+- **Rocketlane tracking tasks still marked "To do"** — the 21 tracking tasks in phase "Agent Development" should be marked "Completed" for the submission story. Low priority but nice-to-have.
 
 ## If the next session starts from a cold start
 
@@ -185,6 +179,7 @@ cd /Users/inbaraj/Downloads/plansync && git pull
 
 # 3. Verify production is alive
 curl -sS https://plansync-production.up.railway.app/health
+open https://plansync-tau.vercel.app    # visual check
 
-# 4. Pick up from "What's next" above — start with Priority 1 (real CSV test)
+# 4. Pick up from "What's next" above — Session 4 starts with Priority 1 (duplicate detection)
 ```

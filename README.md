@@ -13,6 +13,8 @@ Built as the take-home assignment for the **Rocketlane Implementation Manager** 
 
 The agent has been verified end-to-end against the live Rocketlane workspace. A test run on 2026-04-15 created a real Rocketlane project (ID `5000000074663`, name "Plansync E2E Test") with 1 phase, 2 tasks, 1 milestone, and 2 dependencies — all generated autonomously from a hand-written CSV with zero human approvals in the loop.
 
+The frontend is a chat-first single-page UI: 13 components (JourneyStepper, ExecutionPlanCard, PlanReviewTree, PlanIntegrityPanel, ApprovalPrompt, ApiKeyCard, FileUploadCard, ProgressFeed, ReflectionCard, CompletionCard + chat timeline renderers) that render whatever the agent emits via tool calls. No state machine, no wizard, no multi-page flow. See `frontend/components/agent-emitted/` for the full set.
+
 ## What it is
 
 A properly designed agent (not a wizard) that:
