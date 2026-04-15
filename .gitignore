@@ -68,3 +68,14 @@ test-project-*.json
 *-test-*.jpg
 *-screenshot-*.png
 *-screenshot-*.jpg
+
+# Rocketlane Custom App build artifacts
+# `rli build` produces these — they're regenerated from source on every
+# build. The committed plansync-custom-app.zip is a snapshot of the most
+# recent build, but the working files below are not committed.
+custom-app/dist/
+custom-app/rli-dist/
+custom-app/.rli/
+custom-app/node_modules/
+custom-app/app.zip
+custom-app/package-lock.json

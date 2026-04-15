@@ -7,24 +7,26 @@
     <link rel="icon" type="image/svg+xml" href="icon.svg" />
     <style>
       /*
-       * Plansync Custom App shell
+       * Plansync Custom App widget shell
        *
-       * This file is the iframe wrapper that Rocketlane loads when the
-       * Plansync surface is opened. It does one job: full-viewport iframe
-       * to the live Vercel deployment, with `?embed=1` appended so the
-       * frontend hides its app header (Rocketlane provides its own chrome).
+       * This widget is loaded by Rocketlane's Custom Apps runtime when
+       * a user opens Plansync from the workspace left nav or a project
+       * tab. It does one job: full-viewport iframe to the live Vercel
+       * deployment, with `?embed=1` appended so the frontend hides its
+       * Plansync header (Rocketlane provides its own chrome).
        *
        * Why an iframe wrapper instead of bundling the full Next.js app:
-       *  - The .zip is ~5 KB instead of 500 KB-5 MB
-       *  - Always uses the latest deployed frontend without rebuilding
-       *  - Backend (Railway) and frontend (Vercel) auth flow stays unchanged
-       *  - Users get bug fixes the moment we deploy, no Custom App reinstall
+       *  - Users get bug fixes and new features the moment we deploy
+       *    to Vercel, with zero touch on the Custom App side
+       *  - The Custom App .zip stays small (~350 KB after rli build)
+       *  - Backend connectivity to Railway is a normal browser fetch,
+       *    not something we need to proxy through Rocketlane's runtime
        *
-       * Trade-off: requires the Rocketlane workspace to allow loading a
-       * cross-origin iframe from `https://plansync-tau.vercel.app`. If the
-       * workspace's CSP blocks it, the fallback is to bundle the static
-       * Next.js export into this directory. We test this in the Custom
-       * App verification step before submission.
+       * Trade-off: requires the Rocketlane workspace to allow loading
+       * a cross-origin iframe from `https://plansync-tau.vercel.app`.
+       * If the workspace's CSP blocks it, the loading state below
+       * stays visible so the user has an actionable message instead
+       * of a blank screen.
        */
       html,
       body {
@@ -47,12 +49,6 @@
         width: 100vw;
         height: 100vh;
       }
-      /*
-       * Loading state shown while the iframe is fetching. Disappears
-       * naturally once the iframe paints over it. If the iframe fails
-       * to load (e.g. CSP block), this stays visible so the user has
-       * an actionable message instead of a blank screen.
-       */
       .loading {
         position: absolute;
         inset: 0;
@@ -117,7 +113,6 @@
       src="https://plansync-tau.vercel.app?embed=1"
       title="Plansync — Rocketlane Project Plan Agent"
       allow="clipboard-read; clipboard-write"
-      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"
     ></iframe>
   </body>
 </html>
