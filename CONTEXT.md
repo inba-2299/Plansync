@@ -6,11 +6,13 @@
 
 ## Last updated
 
-**2026-04-16, submission day — Admin portal v2 (performance rewrite with pre-computed counters + tabbed lazy loading) merged to main (`9f887c4`). BRD finalized and committed (`1b6f600`). User has verified the main agent flow on prod post-merge and is now testing the admin portal on prod. Remaining: user confirms admin portal, I update Rocketlane tracking tasks, final submission.**
+**2026-04-16, end-of-day — Everything is built, deployed, verified, and tracked. Admin portal v2 confirmed working on prod by Inbaraj. All 5 parent tasks + 20 subtasks in Rocketlane project 5000000073039 updated with plain-English descriptions, marked Completed @ 100%. Four obsolete tasks consolidated. New "Operator Admin Portal (bonus)" parent + 3 subtasks created to track the non-scope work. The only remaining action is the actual submission, which Inbaraj has explicitly deferred to tomorrow (2026-04-17).**
 
 ## Status
 
-**ALL CRITICAL BUGS FIXED. CUSTOM APP INSTALLED AND VERIFIED RUNNING INSIDE ROCKETLANE. ADMIN PORTAL V2 MERGED TO MAIN AND LIVE ON PRODUCTION.** The main agent flow has been re-verified end-to-end on prod after the merge. The remaining submission work is (1) user confirms the admin portal v2 works on prod, (2) update Rocketlane tracking tasks to reflect completion, (3) submit.
+**READY TO SUBMIT.** Everything the assignment requires is live, verified, and documented. The agent works end-to-end on prod, the Custom App is installed inside `inbarajb.rocketlane.com`, the admin portal v2 is live and performant (~200 ms dashboard load), the BRD is finalized, and Rocketlane tracking is fully cleaned up. Per Inbaraj's instruction, submission itself waits until tomorrow.
+
+**One open validation (non-blocking):** Inbaraj noted that $0.86/run on Sonnet 4.5 feels expensive. Validation path already wired in — switch `ANTHROPIC_MODEL` to `claude-haiku-4-5` via the admin portal's Runtime Config tab (live, no redeploy) and run one Sample Plan pass. Expected cost ~$0.20-0.25/run based on the README prediction. This is a "nice-to-have" data point for the BRD's measured-impact section; not required for submission.
 
 Specifically:
 - **Commit 2c** (`537fa3e`) — UX polish: FileUploadCard title revert, ApprovalPrompt preamble strip, journey_update defensive normalization, JourneyStepper status guard, client-side file size validation. SHIPPED on main.
@@ -42,12 +44,113 @@ Specifically:
 - **Model**: `ANTHROPIC_MODEL=claude-haiku-4-5` currently on Railway prod
 - **Cost trajectory**: $3/run (pre-optimization, Sonnet) → $0.86/run (post-batch-tool, Sonnet) → ~$0.05-0.15/run observed on Haiku with prompt caching working well
 
-**Next focus** (in priority order):
-1. User confirms admin portal v2 works on prod (currently in testing)
-2. Update Rocketlane tracking tasks to mark Session 4 work complete
-3. Final submission
+**Next focus** (tomorrow, 2026-04-17):
+1. **Submit.** See "Submission checklist" section below.
+2. **Optional before submission:** run a Haiku cost validation pass via admin portal and add the number to the BRD.
 
-The BRD is committed. The Custom App is verified. The main agent flow is verified. The admin portal on prod is gated until the user sets env vars on prod Railway (or decides to leave it gated for the submission demo).
+Everything else is done. The BRD is committed. The Custom App is verified. The main agent flow is verified. The admin portal v2 is verified. Rocketlane tracking is fully cleaned up.
+
+## Submission checklist (do tomorrow)
+
+Estimated time: 10-15 minutes. Everything is already built; submission is just a handoff.
+
+1. **Pre-flight verification** (5 min)
+   - `curl -sS https://plansync-production.up.railway.app/health` — should return 200
+   - Open https://plansync-tau.vercel.app — should load the chat UI
+   - Open https://github.com/inba-2299/Plansync — confirm main branch is `1b6f600` or later
+   - Verify `custom-app/plansync-custom-app.zip` exists (199 KB)
+   - Verify `BRD.md` is at the repo root
+
+2. **(Optional) Haiku cost validation** (10 min)
+   - In admin portal Runtime Config tab, switch model to `claude-haiku-4-5`
+   - Run one Sample Plan.xlsx pass end-to-end
+   - Capture cost from Anthropic console delta
+   - Add a line to BRD.md § 6 measured impact: "Haiku 4.5 validation run: $X.XX/run"
+   - Commit as `docs: add Haiku cost validation number to BRD`
+
+3. **Submit to Janani** — the 6 deliverables to hand off:
+   - **Live agent (frontend):** https://plansync-tau.vercel.app
+   - **Live agent (backend):** https://plansync-production.up.railway.app (+ /health)
+   - **GitHub repo:** https://github.com/inba-2299/Plansync
+   - **Custom App .zip:** `custom-app/plansync-custom-app.zip` in the repo (also verified installed in `inbarajb.rocketlane.com`)
+   - **BRD:** `BRD.md` at the repo root
+   - **Demo CSV:** `Sample Plan.xlsx` at the repo root (21 tasks, 8 phases, 8 milestones, 12 dependencies)
+   - **Bonus:** admin portal at `/admin` — only mention if ADMIN_USERNAME/ADMIN_PASSWORD are set on prod Railway (currently gated by 503 if not configured)
+
+4. **Mark Rocketlane task 5000001549425 "Submit to Rocketlane" as Completed** — only after the actual submission is done.
+
+## Session 5 — Post-compact wrap-up (2026-04-16 PM)
+
+This session was a documentation + tracking pass after the Session 4 context was compacted. No code changes. Three things happened:
+
+### 1. Admin portal v2 verified on prod
+Inbaraj tested the admin portal v2 on production after the `9f887c4` merge. Dashboard loads fast (~200 ms, confirming the pre-computed counter architecture is working), stat cards show correct numbers, runtime config editor writes to Redis correctly, tool toggles persist, recent sessions table filters work. Verdict from Inbaraj: "verified, its all good".
+
+### 2. Cost concern surfaced (deferred)
+Inbaraj raised a lingering question about the $0.86/run cost on Sonnet 4.5 being expensive. We documented but did not block on this:
+- The existing Sonnet measurement is real and stands as the current BRD number.
+- The admin portal is the validation tool — switching `ANTHROPIC_MODEL` to `claude-haiku-4-5` via the Runtime Config tab applies on the next run with no Railway redeploy.
+- Expected Haiku cost based on the README prediction: ~$0.20-0.25/run (roughly 4× cheaper for the same token mix).
+- The validation run is listed as step 2 of the submission checklist above — optional, not blocking.
+- If Inbaraj runs it, add the number to BRD.md § 6 under "measured impact" and commit as `docs: add Haiku cost validation number to BRD`.
+
+### 3. Rocketlane tracking cleanup
+This was the majority of the session by wall-clock time. The user asked for a comprehensive cleanup of the tracking tasks in Rocketlane project 5000000073039, phase "Agent Development" (phase ID 5000000188900), written in plain English so a non-technical reader can follow. Explicit carve-out: **do not touch task 5000001549425 "Submit to Rocketlane"**.
+
+**What got updated (all via the Rocketlane MCP — each `update_task` call takes ~13-17s, so even running 4-8 in parallel the total wall time was ~8 minutes):**
+
+**5 parent tasks, all set to Completed @ 100% with plain-English descriptions:**
+- `5000001553728` — Agent Core (brain, ReAct loop, memory, self-correction)
+- `5000001553729` — Agent Tools (22 tools including the `execute_plan_creation` batch tool, with the 10× cheaper / 35× faster story called out)
+- `5000001553730` — Agent UI (split workspace, 14 components rendering agent-emitted events, refresh-safe hardening called out)
+- `5000001553747` — Demo CSV + End-to-End Verification (Sample Plan, clean run, edge cases, deploy)
+- `5000001570267` — **Operator Admin Portal (bonus)** — NEW parent, not in original plan. Explains the admin portal was bonus scope, what it does, and the pre-computed counter performance win.
+
+**20 subtasks, all set to Completed @ 100% with plain-English descriptions:**
+
+Under Agent Core (`5000001553728`):
+- `5000001553843` — Unified /agent endpoint (streaming ReAct loop, rate limit retry, SSE heartbeat)
+- `5000001553861` — System prompt (identity, PM knowledge, RL data model, autonomy matrix, late hardening)
+- `5000001553889` — Memory primitives (remember/recall, session store, 48h TTL)
+- `5000001553912` — Self-correction + reflection + runtime docs recovery (3-layer error handling)
+
+Under Agent Tools (`5000001553729`):
+- `5000001553944` — Input tools (parse_csv, get_rocketlane_context, query_artifact + artifact pattern rationale)
+- `5000001553966` — Planning tools (validate_plan 11 checks, create_execution_plan, update_journey_state)
+- `5000001553985` — Creation tools (headline: execute_plan_creation batch tool + architectural reversal story)
+- `5000001554009` — HITL + display tools (request_user_approval blocking + 3 fire-and-forget display tools)
+
+Under Agent UI (`5000001553730`):
+- `5000001554041` — Chat shell with streaming reasoning panel (split layout, 13px font, SSE reconnects)
+- `5000001554042` — API key card + file upload dropzone (agent-triggered, CSV + Excel)
+- `5000001554043` — Plan review tree + execution plan card + reflection card
+- `5000001554044` — Immersive approval prompt (clickable chips, workspace-context-populated options)
+- `5000001554050` — Progress feed + completion card + journey stepper + Carbon design tokens
+
+Under Demo/Verify (`5000001553747`):
+- `5000001554045` — Sample Plan.xlsx (21 tasks, 8 phases, 8 milestones, 12 dependencies)
+- `5000001554046` — End-to-end clean run ($0.86, 3.5s, live inbarajb workspace)
+- `5000001554047` — Edge cases (messy data, self-correction, memory, verification, retry)
+- `5000001554048` — Deploy + Custom App + BRD (Vercel, Railway, rli-built zip, BRD.md)
+
+Under Admin Portal bonus (`5000001570267`):
+- `5000001570268` — Admin auth + route protection (login form, HMAC-signed HTTP-only cookie, fail-closed gating)
+- `5000001570269` — Observability: dashboard stats + counters (pre-computed counter rationale, 200 ms load)
+- `5000001570270` — Runtime config editor, tool toggles, sessions table (live model switch, tool toggles, lazy-loaded sessions)
+
+**4 obsolete tasks cleaned up:**
+- `5000001549422` "Deploy to Vercel" → Completed with consolidation note pointing at 5000001554048
+- `5000001549423` "Create .zip for RL Custom App" → Completed with consolidation note
+- `5000001549424` "Write BRD submission document" → Completed with consolidation note
+- `5000001550403` "Set up Sentry error tracking" → Completed (MCP rejected "Cancelled" as a valid status value and fell back to Completed; the description explicitly states "Removed from scope. We opted out of Sentry to keep the backend lightweight and avoid another paid service")
+
+**Not touched (per user instruction):**
+- `5000001549425` "Submit to Rocketlane" — leave alone, will mark Completed by Inbaraj after the actual submission
+
+### Operational lessons from this session
+- **Rocketlane MCP follow-up questions.** The `update_task` tool occasionally returns a `followUpQuestion` response instead of executing, asking to confirm "pre-mapped fields" even when the instructions explicitly say to proceed. Workaround: add a hard "No follow-up questions. No additional fields. Execute immediately." clause to the `instructions` field. Three of our initial calls came back with follow-ups and had to be retried.
+- **Rocketlane MCP per-call latency.** Each `update_task` call takes 13-17s end-to-end on the wire. For bulk updates (27+ operations in this session), parallel batching is essential — single-threaded it would have been ~7 minutes of nothing-happening. Batches of 4-8 parallel calls kept wall time reasonable.
+- **Rocketlane status vocabulary.** "Cancelled" is not a recognized status value via the MCP; the MCP silently falls back to "Completed" when you try. Valid values appear to be "To do", "In progress", "Completed", possibly "Won't Do" (untested). For dropped tasks, use a "Removed from scope" description and accept Completed status — the description carries the context.
 
 ## Just completed (Session 4 — commits in chronological order)
 
@@ -367,36 +470,9 @@ These commits arrived after Inbaraj flagged "chat input is enabled while agent i
 7. Journey state "update first" rule (first tool call on resume should be `update_journey_state` if state needs to advance)
 8. API key flow rule (never ask user to "paste in next message" — always use `request_user_approval` which renders the secure ApiKeyCard)
 
-## What's next (Session 4 — remaining)
+## What's next
 
-**After Inbaraj's Haiku test succeeds**:
-
-### CORE DELIVERABLE 1 — Rocketlane Custom App .zip (30-45 min)
-This is one of the 6 core deliverables from the PRD (item 3). Demonstrates understanding of Rocketlane's extensibility model.
-
-Files to create:
-- `custom-app/manifest.json` — Rocketlane Custom App manifest per the spec, pointing at `https://plansync-tau.vercel.app?embed=1`
-- `custom-app/index.html` — iframe shell if Rocketlane requires a self-contained bundle (otherwise just a manifest + manifest.json is enough)
-- `custom-app/icon.svg` — Plansync lightning bolt icon
-- `custom-app/build.sh` — zip script producing `plansync-custom-app.zip`
-
-Frontend changes:
-- Add `?embed=1` URL param handler to `Chat.tsx` that hides the Plansync header when true (Rocketlane provides its own chrome)
-- Test embed: install the .zip in inbarajb.rocketlane.com, open Plansync tab from a project, verify full run works
-
-### CORE DELIVERABLE 2 — BRD document (45-60 min)
-One of the 6 core deliverables (item 4). 1-2 pages for Janani.
-
-Pull from:
-- `docs/DESIGN.md` — architectural decisions and trade-offs
-- `docs/PLAN.md` — tool list and agent invariants
-- `MEMORY.md` — session-by-session lessons
-
-Content: problem, approach, why it's agentic (22 tools, interactive metadata, reflection, runtime recovery, batch execution), architecture diagram, demo link, repo link, Custom App .zip link.
-
-### Submission (5-10 min)
-- Upload BRD + Custom App .zip + Sample Plan.xlsx demo CSV to Rocketlane Spaces
-- Submit to Janani
+All build work is done. See the **Submission checklist** section above for tomorrow's final handoff steps. Nothing else is in-flight.
 
 ## Testing state
 
@@ -421,36 +497,35 @@ Content: problem, approach, why it's agentic (22 tools, interactive metadata, re
 
 ## Open questions for Inbaraj
 
-- **Custom App iframe sandbox** — untested. Rocketlane may apply strict CSP that blocks iframes. Test in inbarajb.rocketlane.com before committing to the iframe approach. Fallback is a self-contained HTML bundle (bigger, more complex).
-- **BRD format** — Rocketlane Spaces as a page, or PDF upload? Need to check what Spaces accepts.
+- **Cost validation** (non-blocking, optional for BRD): switch model to Haiku via admin portal, run one Sample Plan pass, capture the cost delta. Expected ~$0.20-0.25/run based on the README prediction. Adds a measured data point to the BRD without changing any code.
+- **Submission format** — Rocketlane Spaces as a page, or PDF upload, or direct email to Janani? Check what the submission instructions say when you're ready to submit tomorrow.
 - **Workspace subdomain for URL construction** — currently the agent derives it from `get_rocketlane_context` team member emails. Not bulletproof. Longer-term fix (post-submission): backend should surface the subdomain explicitly in the context response.
 
 ## Deferred items (post-submission)
 
-These are real features we discussed and decided to defer, not bugs:
+These are real features discussed and intentionally deferred — they don't block submission:
 
-1. **Session persistence across page refreshes** — currently refresh creates a new sessionId, orphaning the 7-day Redis session. Fix requires: localStorage for sessionId, new `GET /session/:id/hydrate` endpoint on backend, Redis list storing SSE events for replay. ~2-3 hours of work. Documented in detail in Session 4 discussion.
-2. **62-row Shard FM Engine test** — originally Priority 1 for Session 4. Skipped by user decision because enough tests have been done with smaller plans and we're creating many test projects.
-3. **Gemini free-tier exploration** — user has free Gemini quota, wants to try it as an alternative model. Would require adding a second SDK client and a model abstraction layer.
-4. **Admin portal `/admin`** — was on the Session 4 discussion list, deferred to post-submission. HTTP Basic Auth, model selection UI, session list, TTL config.
-5. **Lessons feedback loop + knowledge base** — agent learns across sessions via persisted lessons. Also on the discussion list, deferred.
-6. **Create-or-update flow** — 5 new Rocketlane update tools + diff view UI. Also deferred.
-7. **Tailwind-merge for cn()** — would solve class conflicts in Markdown component but not needed with the current inheritance pattern.
-8. **Commit 2b + 2c** — UX polish. 2b may already be masked by 2e. 2c is ~30 min of polish. Low priority unless Inbaraj flags during Haiku test.
+1. **Cross-device session recovery (Tier 2)** — Tier 1 (same-browser refresh) is already shipped and verified via Redis event log replay. Tier 2 would let a user continue a session started on their laptop from their phone. Requires a user identifier + session list endpoint + gate page. ~4.5 hours. Not exercised in a single-reviewer demo.
+2. **"Refresh Agent" button for stuck sessions** — if a `/agent` request dies mid-stream (Railway redeploy, network blip), the Redis lock stays held until its 5-min TTL expires. User currently sees HTTP 409 and has to click "New session" to recover. Proposed fix: `POST /session/:id/unlock` + a mid-stream banner button that force-releases and nudges. ~45-60 min.
+3. **62-row Shard FM Engine test** — originally Priority 1 for Session 4, skipped because the 21-row Sample Plan covered every agent capability and we were creating many test projects in the workspace.
+4. **Gemini free-tier exploration** — free quota available; would require adding a second SDK client and a model abstraction layer.
+5. **Lessons feedback loop + knowledge base** — agent learns across sessions via persisted lessons.
+6. **Create-or-update flow** — 5 new Rocketlane update tools + diff view UI.
+7. **Admin portal v3 polish** — live SSE subscription for real-time counter updates, session detail drill-down page, time-series graphs, cost estimator tab.
 
 ## Environment state (production)
 
 | Service | Status | URL |
 |---|---|---|
-| Railway backend (prod) | **LIVE v0.1.13** on `bf53e84`, ANTHROPIC_MODEL=haiku, SSE heartbeat + refresh-safe events + system prompt hardened | https://plansync-production.up.railway.app |
-| Railway backend (preview) | **Being set up by user** — will watch the `admin-portal` branch, shared Upstash Redis, separate ADMIN_USERNAME/ADMIN_PASSWORD env vars | `plansync-preview-xxxx.up.railway.app` (TBD) |
-| Vercel frontend (prod) | **LIVE** at `bf53e84` with 13px base font + split layout + ErrorBoundary + refresh-safe hydration + prose-asking hardening | https://plansync-tau.vercel.app |
-| Vercel frontend (preview) | Auto-deployed for `admin-portal` branch. User may either override `NEXT_PUBLIC_AGENT_URL` in Vercel preview env vars OR run the frontend locally pointed at the preview Railway URL. | `plansync-tau-git-admin-portal-xxxx.vercel.app` (TBD) |
-| GitHub repo | `main` at `bf53e84`, `admin-portal` at `e140986` | https://github.com/inba-2299/Plansync |
-| Custom App in Rocketlane | **INSTALLED AND VERIFIED WORKING** in `inbarajb.rocketlane.com` — iframe wrapper loads live Vercel frontend via `?embed=1` | https://inbarajb.rocketlane.com |
-| Rocketlane workspace | Inbarajb's Enterprise trial, multiple test projects exist | https://inbarajb.rocketlane.com |
-| Upstash Redis | Connected and healthy (session TTL 7d, events TTL 7d, admin usage daily TTL 30d) | — |
-| Anthropic API | Connected, currently Haiku 4.5 | — |
+| Railway backend (prod) | **LIVE on main `1b6f600`**, ANTHROPIC_MODEL=haiku, admin portal v2 gated by ADMIN_USERNAME/ADMIN_PASSWORD env vars (503 if unset) | https://plansync-production.up.railway.app |
+| Railway backend (preview) | `invigorating-spontaneity` service on preview Railway account, shared Upstash Redis. Originally set up to test the `admin-portal` branch. Can be deleted post-submission or left as a staging target. | `plansync-preview-*.up.railway.app` |
+| Vercel frontend (prod) | **LIVE on main `1b6f600`** — 13px base font + split layout + ErrorBoundary + refresh-safe hydration + prose-asking hardening + tabbed admin portal at `/admin` | https://plansync-tau.vercel.app |
+| Vercel frontend (preview) | Preview-scoped `NEXT_PUBLIC_AGENT_URL` env var on Vercel points at the preview Railway URL (user set this up manually during admin portal testing). | `plansync-tau-preview.vercel.app` |
+| GitHub repo | `main` at `1b6f600` (BRD finalized). `admin-portal` branch merged via `git merge --no-ff` as `9f887c4`. | https://github.com/inba-2299/Plansync |
+| Custom App in Rocketlane | **INSTALLED AND VERIFIED WORKING** in `inbarajb.rocketlane.com` — `plansync-custom-app.zip` 199 KB built via `@rocketlane/rli` CLI, widget at `left_nav` + `project_tab`, iframe loads `https://plansync-tau.vercel.app?embed=1` | https://inbarajb.rocketlane.com |
+| Rocketlane workspace | Inbarajb's Enterprise trial. Project 5000000073039 "Plansync Build" has all tracking tasks under phase "Agent Development" (phase ID 5000000188900). | https://inbarajb.rocketlane.com |
+| Upstash Redis | Connected and healthy (session TTL 48h, events TTL 7d, admin usage daily TTL 30d, admin counters for observability) | — |
+| Anthropic API | Connected, currently Haiku 4.5 (flipped via admin portal Runtime Config) | — |
 
 **Railway env vars on the prod service** (all set):
 - `ANTHROPIC_API_KEY`
@@ -459,11 +534,7 @@ These are real features we discussed and decided to defer, not bugs:
 - `UPSTASH_REDIS_REST_TOKEN`
 - `ENCRYPTION_KEY`
 - `ALLOWED_ORIGIN=https://plansync-tau.vercel.app,http://localhost:3000,https://*.rocketlane.com`
-
-**Railway env vars on the PREVIEW service** (user to configure before testing admin portal):
-- All of the above (same values, same Redis)
-- **PLUS** `ADMIN_USERNAME` (operator picks)
-- **PLUS** `ADMIN_PASSWORD` (generate via `openssl rand -base64 24`)
+- **Admin portal gate** — `ADMIN_USERNAME` and `ADMIN_PASSWORD` optional. Setting both unlocks the `/admin` portal on prod. Leaving them unset returns 503 `portal_not_configured` (fail-closed).
 
 ## Environment state (local)
 

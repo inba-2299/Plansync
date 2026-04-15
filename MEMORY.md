@@ -1053,4 +1053,65 @@ The extra 30 seconds of ceremony is worth it. It gives the user a chance to revi
 
 ---
 
-## Session 5+ — (to be filled in as sessions happen)
+## 2026-04-16 PM — Session 5: Post-compact wrap-up, admin portal verified, Rocketlane cleanup, ready to submit
+
+### Context at start
+
+The Session 4 conversation ran out of context mid-flight (during the Rocketlane tracking task update pass). The compacted summary captured everything up to "4 of 4 parent tasks updated, 3 of 4 succeeded on first try, 5000001553730 returned a followUpQuestion and needed retry". This session picked up from that exact point.
+
+### What happened (no code changes — documentation + tracking only)
+
+1. **Admin portal v2 verified on prod by Inbaraj.** After the `9f887c4` merge, he confirmed the dashboard loads fast (~200ms, confirming the pre-computed counter architecture is working as designed), stat cards show correct numbers, runtime config editor persists to Redis, tool toggles work, and the recent sessions table filters correctly. Verdict: "verified, its all good". The performance rewrite from v1 (15-40s load) to v2 (~200ms) is real and holds on prod.
+
+2. **Cost concern surfaced, validation path documented.** Inbaraj raised that the $0.86/run cost on Sonnet 4.5 feels expensive. We agreed to defer the actual validation (a real Haiku run through Sample Plan) but documented the validation path explicitly in both CONTEXT.md submission checklist and in this MEMORY entry:
+   - Switch `ANTHROPIC_MODEL` to `claude-haiku-4-5` via the admin portal's Runtime Config tab (live, no Railway redeploy — that's exactly what the admin portal was built for).
+   - Run one Sample Plan.xlsx pass end-to-end.
+   - Capture cost from the Anthropic console delta.
+   - Expected cost based on README prediction: ~$0.20-0.25/run (roughly 4× cheaper for the same token mix, driven by Haiku being $1/$5 per MTok vs Sonnet's $3/$15 plus prompt caching dropping most input tokens to 10% of the base rate).
+   - If the validation run confirms the prediction, add a one-line measured-impact row to BRD.md § 6 and commit. Optional, not blocking submission.
+
+3. **Rocketlane tracking cleanup — the majority of the session by wall time.** Inbaraj asked for a comprehensive cleanup of the tracking tasks in project 5000000073039, phase "Agent Development" (phase ID 5000000188900), rewritten in plain English a non-technical reader can follow. Explicit carve-out: **do not touch task 5000001549425 "Submit to Rocketlane"** — that stays as-is until the actual submission happens tomorrow.
+
+**Scope of what got updated:**
+- 5 parent tasks set to Completed @ 100% with plain-English descriptions (the original 4 parents + 1 new "Operator Admin Portal (bonus)" parent to track the non-scope work).
+- 20 subtasks set to Completed @ 100% (17 original subtasks under the 4 original parents + 3 new subtasks under the admin portal parent covering auth, observability, and runtime config editor).
+- 4 obsolete tasks marked Completed with consolidation notes: old "Deploy to Vercel" (5000001549422), old "Create .zip for RL Custom App" (5000001549423), old "Write BRD submission document" (5000001549424) all redirect to the consolidated 5000001554048 "Deploy + Ship" subtask. "Set up Sentry error tracking" (5000001550403) has a "Removed from scope" description.
+- 1 task intentionally untouched: `5000001549425` "Submit to Rocketlane".
+
+Every task description is written outcome-focused (what was built, why, what the trade-off was, measurable result where applicable), in plain English — not code names, not function signatures. The goal was that a non-technical reader can read the task list top-to-bottom and understand what Plansync does and why it's designed the way it is.
+
+### Decision: accept "Completed" for the Sentry task instead of "Cancelled"
+
+**What I tried.** I wanted `5000001550403` "Set up Sentry error tracking" to be marked with a distinct status reflecting "we decided not to do this" rather than the cleaner "done it". I first tried `Won't Do`, then `Cancelled`.
+
+**What happened.** The Rocketlane MCP silently rejected both values and fell back to "Completed" with a `"reason":"llm-guess"` signal in the response. Only a small vocabulary appears to be recognized: "To do", "In progress", "Completed" (and probably "In review", untested).
+
+**What I did instead.** I left the status as Completed and made the distinction explicit in the task description: `"Removed from scope. We opted out of Sentry to keep the backend lightweight and avoid another paid service..."`. The status shows Completed but anyone who reads the description understands it was dropped on purpose, not delivered.
+
+**Why this is fine.** Rocketlane is a status-oriented tool; the distinction between "done" and "decided not to do" doesn't really matter for task closure reporting — both end up in the same bucket of "no longer on the todo list". If we ever wanted clean "won't do" tracking for a real production use, we'd need to either (a) use a custom field with a "reason code" or (b) move the task into a different phase named "Out of Scope". Neither is worth doing for the take-home.
+
+### Operational lessons from this session
+
+These are tactical lessons about working with the Rocketlane MCP that will save future sessions time:
+
+**Lesson: Rocketlane MCP `update_task` follow-up questions.** The MCP's `update_task` action sometimes returns a `followUpQuestion` response instead of executing, asking to confirm "pre-mapped fields" even when the instructions clearly say to proceed. This is non-deterministic — the same instruction works on one task and triggers a follow-up on another. Workaround: add a hard "No follow-up questions. No additional fields. Execute immediately." clause to the top of the `instructions` parameter. Three of my initial calls in this session hit this and had to be retried with the explicit no-follow-up wording.
+
+**Lesson: Rocketlane MCP `update_task` latency.** Each `update_task` call takes 13-17s end-to-end on the wire (Zapier action → Rocketlane API → return). For bulk updates (this session: 27+ operations), single-threading would mean ~7 minutes of sequential waiting. Parallel batching (running 4-8 updates in a single Claude message) cuts wall time by 4-8× because the MCP handles them concurrently. The trade-off: batching >4 makes it harder to spot individual failures in the output, so 4 is the sweet spot for "fast but still debuggable".
+
+**Lesson: Rocketlane MCP status vocabulary is small.** Valid values for the Status field via the MCP appear limited to: "To do", "In progress", "Completed", possibly "In review". "Cancelled", "Won't Do", "Blocked", and similar values silently fall back to "Completed" with a `"reason":"llm-guess"` signal. If you need to mark something as "decided not to do", put the rationale in the Task Description and accept Completed status; the description carries the semantics.
+
+**Lesson: keep the user informed during long-running batches.** When I was running the Rocketlane update loop (~27 MCP calls at 15s each, even batched), Inbaraj asked "what is happening — why so long?" mid-stream because there were long gaps between my messages while waiting on MCP responses. I should have emitted a progress update before starting each parallel batch ("running 8 subtask updates in parallel now, ~20s") so he had visibility into wall-time expectations. For future long-running MCP batch operations, always pre-announce: "I'm about to run N MCP calls in parallel, expect ~X seconds of quiet."
+
+### State at session end
+
+- Everything is built, deployed, verified, and documented.
+- CONTEXT.md is updated with the final "ready to submit" state plus a detailed submission checklist for tomorrow.
+- MEMORY.md (this file) has this entry capturing what happened and the lessons learned.
+- Rocketlane tracking is clean: 5 parents + 20 subtasks all Completed, 4 obsolete tasks consolidated, 1 task (Submit) intentionally left for tomorrow.
+- The only remaining action is the submission itself, scheduled for 2026-04-17 per Inbaraj's explicit deferral.
+
+No new commits were made in this session — it was documentation-only (CONTEXT.md, MEMORY.md, and spot-checks of other MD files). Whether to commit these doc updates is up to Inbaraj; I'll ask at the end of the session.
+
+---
+
+## Session 6+ — (to be filled in as sessions happen)

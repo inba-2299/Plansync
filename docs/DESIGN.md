@@ -6,9 +6,11 @@
 
 ---
 
-## Session 4 addendum (2026-04-15 afternoon)
+## Session 4 addendum (2026-04-15 afternoon) + Session 5 (2026-04-16 PM)
 
 This document was written in Session 2 and captures decisions 1-12 from the original design. **Session 4 added several important architectural decisions that reverse or extend those original choices.** This addendum lists the deltas at a high level; for the full detail + rationale + measured impact of each, read `MEMORY.md` under "Session 4".
+
+**Session 5 note:** Session 5 (2026-04-16 PM) was a documentation + Rocketlane tracking cleanup pass only — no architectural changes, no code commits. Admin portal v2 (AD-14) was verified working on production by Inbaraj. All Rocketlane project-plan tracking tasks were rewritten in plain English and marked Completed. Cost concern ($0.86/run on Sonnet) was noted but validation was deferred to submission day. See CONTEXT.md § "Session 5 — Post-compact wrap-up" and MEMORY.md § "2026-04-16 PM — Session 5" for detail. The submission itself is scheduled for 2026-04-17.
 
 ### Decisions added/revised in Session 4
 
@@ -135,7 +137,7 @@ All writes are fire-and-forget (`void .catch(() => {})`) so a Redis hiccup durin
 - Counter updates are fire-and-forget — if Redis is partitioned, counters drift but the agent loop doesn't fail. Stats can be re-derived from event logs post-hoc if we ever need to.
 - The Sessions tab still does N per-session HGETALLs (bounded at 100) to fetch metadata for display. Not O(1), but predictable and lazy-loaded so users don't pay this cost unless they click the tab.
 
-**Verified:** typecheck + build clean, dashboard measurably faster (confirmed via DevTools Network tab in the preview deployment).
+**Verified:** typecheck + build clean, dashboard measurably faster (confirmed via DevTools Network tab in the preview deployment). **Session 5 (2026-04-16):** v2 re-verified on production after the `9f887c4` merge by Inbaraj — dashboard loads fast, stat cards correct, runtime config editor persists to Redis, tool toggles work, recent sessions table filters correctly. The ~200ms dashboard load time holds on prod, not just preview.
 
 ### AD-15: Session state recovery gap (documented, not yet fixed)
 
