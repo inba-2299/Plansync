@@ -1,6 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import { Markdown } from '../Markdown';
 
 interface ReflectionCardProps {
   observation: string;
@@ -82,11 +83,11 @@ function ReflectField({ icon, label, value, highlight }: ReflectFieldProps) {
         <div
           className={
             highlight
-              ? 'text-sm text-on-surface font-semibold leading-relaxed'
-              : 'text-sm text-on-surface-variant leading-relaxed'
+              ? 'text-sm text-on-surface font-semibold'
+              : 'text-sm text-on-surface-variant'
           }
         >
-          {value}
+          <Markdown content={value} />
         </div>
       </div>
     </div>

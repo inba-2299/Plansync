@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/cn';
 import { ApiKeyCard } from './ApiKeyCard';
+import { Markdown } from '../Markdown';
 
 interface ApprovalOption {
   label: string;
@@ -84,7 +85,9 @@ export function ApprovalPrompt({
                 {question}
               </div>
               {context && (
-                <div className="text-xs text-on-surface-variant mt-1">{context}</div>
+                <div className="text-xs text-on-surface-variant mt-1">
+                  <Markdown content={context} />
+                </div>
               )}
             </div>
           </div>
@@ -144,8 +147,8 @@ export function ApprovalPrompt({
               {question}
             </div>
             {context && (
-              <div className="text-xs text-on-surface-variant mt-1.5 leading-relaxed">
-                {context}
+              <div className="text-xs text-on-surface-variant mt-1.5">
+                <Markdown content={context} />
               </div>
             )}
           </div>

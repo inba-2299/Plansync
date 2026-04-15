@@ -1,4 +1,5 @@
 import { cn } from '@/lib/cn';
+import { Markdown } from './Markdown';
 
 interface MessageBubbleProps {
   role: 'user' | 'agent';
@@ -8,9 +9,11 @@ interface MessageBubbleProps {
 /**
  * MessageBubble — user message in the chat timeline.
  *
- * User messages are right-aligned with the brand gradient. Agent
- * "reasoning" messages don't use this — they use ReasoningBubble.tsx
- * for the collapsible behavior.
+ * User messages are right-aligned with the brand gradient (no markdown
+ * rendering — user text is plain). Agent "reasoning" messages don't
+ * use this component — they use ReasoningBubble.tsx for the collapsible
+ * behavior. When the agent sends a non-reasoning text message (rare),
+ * it renders as an agent bubble here with full markdown.
  */
 export function MessageBubble({ role, content }: MessageBubbleProps) {
   if (role === 'user') {
@@ -30,9 +33,7 @@ export function MessageBubble({ role, content }: MessageBubbleProps) {
           'max-w-[85%] bg-surface-container-lowest border border-outline-variant/30 rounded-3xl rounded-bl-md px-5 py-3 shadow-card-sm'
         )}
       >
-        <div className="text-sm text-on-surface whitespace-pre-wrap leading-relaxed">
-          {content}
-        </div>
+        <Markdown content={content} />
       </div>
     </div>
   );

@@ -1,16 +1,28 @@
-/* Font @imports MUST come before @tailwind directives (CSS spec rule) */
-
 /*
- * NOTE: Inter + Manrope are NOT imported here — they're loaded via
- * next/font/google in app/layout.tsx (see --font-inter / --font-manrope
- * CSS variables). That's the Next.js-approved way and avoids the
- * @next/next/no-page-custom-font ESLint error that fires on <link>
- * stylesheet tags in layout.tsx.
+ * Font loading notes (read this before touching):
  *
- * Material Symbols Outlined IS imported here because it's an icon font,
- * not a regular text font — next/font/google doesn't support icon fonts.
+ * Inter + Manrope — loaded via next/font/google in app/layout.tsx
+ * (--font-inter / --font-manrope CSS variables). That's the
+ * Next.js-approved path and avoids the @next/next/no-page-custom-font
+ * ESLint error.
+ *
+ * Material Symbols Outlined — loaded via <link rel="stylesheet"> in
+ * app/layout.tsx with an ESLint disable comment. We CANNOT use
+ * @import url(...) here because:
+ *   1. next/font/google injects its @font-face declarations at the TOP
+ *      of the compiled CSS bundle (byte 0).
+ *   2. CSS spec requires @import rules to precede ALL other rules.
+ *   3. Our globals.css @import ends up at byte ~9700 after dozens of
+ *      next/font @font-face declarations.
+ *   4. The browser silently invalidates it per CSS spec — the Google
+ *      Fonts stylesheet never loads — and every Material Symbols
+ *      ligature (e.g. "check_circle") renders as literal text instead
+ *      of the glyph.
+ *   5. We CANNOT use next/font/google for it either — next/font only
+ *      supports text fonts, not icon fonts.
+ * The <link> approach bypasses the CSS build pipeline entirely and is
+ * the only reliable loading path.
  */
-@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
 
 @tailwind base;
 @tailwind components;

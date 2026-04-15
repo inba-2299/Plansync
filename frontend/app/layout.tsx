@@ -39,14 +39,40 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${manrope.variable}`}>
-      {/*
-        NOTE on Material Symbols Outlined: it's an icon font (not a regular
-        text font), so next/font/google does NOT support it. Instead it's
-        loaded via @import in app/globals.css with the @import statement
-        placed at the very top of the file (before @tailwind directives)
-        per CSS spec. This avoids the @next/next/no-page-custom-font lint
-        warning that would fire on <link rel="stylesheet"> tags.
-      */}
+      <head>
+        {/*
+          Material Symbols Outlined icon font.
+
+          Loaded via <link> instead of @import because next/font/google
+          injects its own @font-face declarations at the TOP of the final
+          compiled CSS, which pushes any @import in globals.css out of the
+          required top position. CSS spec then invalidates the @import
+          silently and the Google Fonts stylesheet never loads — every
+          icon in the app ends up rendering as its ligature name
+          (e.g. "check_circle") instead of the glyph.
+
+          next/font/google cannot be used here either — it only supports
+          text fonts, not icon fonts.
+
+          The ESLint rule @next/next/no-page-custom-font is designed for
+          regular text fonts that should use next/font. It does NOT apply
+          to icon fonts and is suppressed below.
+        */}
+        <link
+          rel="preconnect"
+          href="https://fonts.googleapis.com"
+        />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
+        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"
+        />
+      </head>
       <body className="antialiased">{children}</body>
     </html>
   );

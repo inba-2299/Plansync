@@ -1,4 +1,5 @@
 import { cn } from '@/lib/cn';
+import { Markdown } from './Markdown';
 
 interface ReasoningBubbleProps {
   content: string;
@@ -74,9 +75,18 @@ export function ReasoningBubble({
                 </button>
               </div>
             ) : (
-              <div className="text-sm text-on-surface whitespace-pre-wrap leading-relaxed">
-                {content}
-                {!complete && <span className="streaming-cursor" />}
+              <div className="text-sm text-on-surface leading-relaxed">
+                {complete ? (
+                  <Markdown content={content} />
+                ) : (
+                  // While streaming, render as plain text so partial
+                  // markdown tokens (half-finished **bold**) don't
+                  // reflow the bubble on every delta
+                  <div className="whitespace-pre-wrap">
+                    {content}
+                    <span className="streaming-cursor" />
+                  </div>
+                )}
                 {complete && (
                   <button
                     className="block mt-2 text-[10px] uppercase font-bold tracking-wider text-on-surface-variant/60 hover:text-primary"
