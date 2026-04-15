@@ -1,5 +1,25 @@
 # Plansync — Rocketlane Project Plan Agent
 
+> **⚠ READ THIS FIRST — Session 4 deltas**
+>
+> This document is the **Session 1 build plan**. It captured the initial architecture decisions and the 20-tool agentic design. Most of it is still accurate, but the following key deltas have landed since this was written and are NOT reflected in the text below:
+>
+> 1. **Tool count: 21 custom + 1 server = 22 total** (not 20 + 1 = 21). Session 4 added `execute_plan_creation` — a batch execution tool that reversed this plan's "break `execute_creation_pass` into fine-grained primitives" decision for the happy path. The fine-grained tools still exist as fallback for failure recovery and surgical edits. See MEMORY.md "Decision: `execute_plan_creation` batch tool — the architectural reversal" for the full story, measured cost/speed impact (3× cheaper, 35× faster execution phase), and rationale.
+>
+> 2. **Model is configurable via `ANTHROPIC_MODEL` env var on Railway**, no hardcoded default. The original plan said "Model: `claude-sonnet-4-5`" as a constant. Session 4 made this a required env var with no fallback — the loop fails fast with a clear error if missing. Valid values: `claude-haiku-4-5`, `claude-sonnet-4-5`, `claude-opus-4-5`. Recommended: Haiku for cost (~$0.20-0.25/run), Sonnet for capability (~$0.86/run).
+>
+> 3. **Frontend is a responsive split layout**, not a single-column chat. Session 3-4 built: user workspace LEFT 40%, agent workspace RIGHT 60%, thin vertical rule between, pinned ExecutionPlanCard + ProgressFeed inside agent column sticky-top. Collapses to single column below 1024px. 14px base font size. ~14 components in `frontend/components/agent-emitted/`.
+>
+> 4. **Token optimization stack** is applied: tool caching via `cache_control: ephemeral` on the last tool schema (caches ~2000 tokens of tools after turn 1), reasoning-diet rule (prose only in streaming text, no JSON dumps), compact JSON rule in tool inputs, reference-by-artifactId in `execute_plan_creation`. Combined effect: per-turn input tokens down ~10× during execution, rate limit wall no longer hit, end-to-end run cost on Sonnet 4.5 is ~$0.86/run for a 21-task plan.
+>
+> 5. **Interactive metadata gathering rule** was added to the system prompt (model-agnostic). Tells both Sonnet and Haiku to infer defaults first (filename → project name, workspace context → customer/owner, task dates → start/end), then ask sequentially via `request_user_approval` with options pre-populated from workspace context. Never prose-dump multiple questions. See MEMORY.md "Decision: interactive metadata gathering rule (model-agnostic)".
+>
+> 6. **429 retry with `Retry-After` backoff** is implemented in the agent loop. Up to 3 retries, max 60s wait per retry, emits `rate_limited` SSE event to frontend so users see a countdown. AgentEvent union gained `rate_limited` variant and `error.kind` field.
+>
+> 7. **Rocketlane Custom App .zip** and **BRD document** are NOT yet built at the time of this addendum — they're queued as the final two core deliverables. When they land, this addendum should be updated to reflect "all 6 core deliverables complete."
+>
+> 8. For the **current state of the build**, read `CONTEXT.md`. For the **why** of every decision, read `MEMORY.md`. This plan is historical — it's Session 1's blueprint, not the running architecture.
+
 ## Context
 
 **The assignment.** Inbaraj received a Rocketlane Implementation Manager take-home: build an AI agent that reads a project plan CSV and creates it as a structured project (phases, tasks, subtasks, milestones, dependencies) in Rocketlane via their REST API. Deadline 2026-04-16. Rocketlane has no native CSV import for project plans, so implementation teams currently recreate plans manually — this agent eliminates that work.

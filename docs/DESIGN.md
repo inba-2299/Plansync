@@ -6,6 +6,55 @@
 
 ---
 
+## Session 4 addendum (2026-04-15 afternoon)
+
+This document was written in Session 2 and captures decisions 1-12 from the original design. **Session 4 added several important architectural decisions that reverse or extend those original choices.** This addendum lists the deltas at a high level; for the full detail + rationale + measured impact of each, read `MEMORY.md` under "Session 4".
+
+### Decisions added/revised in Session 4
+
+**D13 (NEW) — Batch execution tool reverses the "fine-grained only" decision from D4/D8.**
+The original design deliberately broke the PRD's batch `execute_creation_pass` into fine-grained primitives (`create_phase`, `create_task`, `create_tasks_bulk`, `add_dependency`) to be "more agentic." In practice this cost ~$3/run on Sonnet, hit the 30K TPM wall regularly, and burned 15-30 turns per execution phase. Session 4 added a new tool `execute_plan_creation(planArtifactId, metadata)` that does the full creation sequence on the backend in one call: project shell → phases → tasks → subtasks → milestones → dependencies, with progress events streamed to the frontend. The fine-grained tools still exist as fallbacks for failure recovery and surgical edits. **The agentic decision is now "which tool to use" (batch vs fine-grained), not "walk every mechanical step."** Measured impact on first run: cost dropped to $0.86/run (~70% reduction), execution time dropped from 60-120s to 3.5s (~35× faster), rate limit wall no longer hit.
+
+**D14 (NEW) — Model is configured via env var, no code default.**
+Original design hardcoded `MODEL = 'claude-sonnet-4-5'` in `loop.ts`. Session 4 made this a required `ANTHROPIC_MODEL` env var on Railway with no fallback. If missing, the loop emits a clear error and fails fast. Rationale: model choice is a product decision that should be flippable without a deploy, and a silent fallback hides what's actually running. Valid values: `claude-haiku-4-5`, `claude-sonnet-4-5`, `claude-opus-4-5`.
+
+**D15 (NEW) — Token optimization stack.** Four complementary changes applied together:
+1. **Tool caching** — added `cache_control: { type: 'ephemeral' }` to the last tool in the schema array. Anthropic's prompt caching cascades backwards from the marker, so this caches the entire tools array. After turn 1, ~2000 tokens of tool schemas become ~200 effective tokens.
+2. **Reasoning diet rule** in the system prompt — forbids JSON/code-blocks/structured data in streaming reasoning text. Prose only, <200 chars per bubble. Fixed the max_tokens errors we were hitting when the agent dumped full plan JSON in reasoning before calling tools.
+3. **Compact JSON rule** in the system prompt — no indentation in tool inputs. ~20-30% savings on tool input tokens.
+4. **Plan-by-artifact-reference** — `execute_plan_creation` takes `planArtifactId` not a full `plan` object. Plan JSON is loaded from the artifact store on the backend instead of being passed through the tool input (which would land in history and be replayed on every subsequent turn).
+
+Combined, these cut per-turn input tokens roughly in half and eliminated the max_tokens errors.
+
+**D16 (NEW) — 429 retry with Retry-After backoff.**
+The agent loop now catches `rate_limit_error` from Anthropic, reads the `Retry-After` header, clamps to [0, 60] seconds, emits a new `rate_limited` SSE event so the frontend can show a countdown, sleeps, and retries up to 3 times before giving up with `error: { kind: 'rate_limit' }`. Added to the AgentEvent union: `rate_limited` variant with `retryInSeconds`, `attempt`, `maxAttempts`; `error` now has optional `kind: 'rate_limit' | 'auth' | 'generic'`.
+
+**D17 (NEW) — Interactive metadata gathering rule (model-agnostic).**
+New system prompt section that mandates sequential `request_user_approval` calls, one field at a time, with options PRE-POPULATED from workspace context. Forbids prose-dumping multiple questions expecting typed answers. Rule: infer defaults first (filename → project name, workspace context → customer/owner, task dates → start/end), ask only for what can't be inferred, and when asking, use pre-populated options. Added because Haiku 4.5 was using `request_user_approval` as a yes/no confirmation only (Sonnet had the interactive behavior by default), and the rule needed to be explicit for any model to follow.
+
+**D18 (REVISED) — Split-layout frontend replaces single-column chat.**
+The original design implied a single-column chat UI with inline cards. Session 4 shipped a two-column split layout (user workspace LEFT 40%, agent workspace RIGHT 60%, thin vertical rule between, pinned cards inside the agent column sticky-top with collapsible execution plan). Responsive: collapses to single chronological column below 1024px. 14px base font size (cascades through Tailwind's rem-based sizing for ~12.5% smaller UI overall). Rationale: single-column got overwhelming on 20-turn runs and the Figma reference showed a sidebar + main content pattern that worked better for "you act, agent thinks."
+
+**D19 (REVISED) — Rocketlane URL format rule.**
+The agent was constructing `https://app.rocketlane.com/project/{id}` in completion cards. Wrong twice: `app.rocketlane.com` doesn't exist (each customer has their own subdomain like `inbarajb.rocketlane.com`), and the path is `/projects/` plural, not `/project/`. New system prompt rule tells the agent to derive the workspace subdomain from `get_rocketlane_context` and use the correct format, or fall back to a relative path `/projects/{id}` if the subdomain can't be determined. Follow-up work deferred: make `get_rocketlane_context` surface the subdomain explicitly in its response so the agent always has it available.
+
+**D20 (REVISED) — Execution plan completion sequence rule.**
+The pinned execution plan card was getting stuck on "Step 5 of 6 / running" after successful runs because the agent jumped from `execute_plan_creation` straight to `display_completion_summary` without re-calling `create_execution_plan` to mark all steps done. New rule enforces a strict final sequence: `create_execution_plan` (all steps done) → `update_journey_state` (Execute + Complete done) → `display_completion_summary`. Explicit "do not skip step 1" directive.
+
+### Decisions REJECTED in Session 4
+
+**R3 — TOON format.** Discussed as an alternative to JSON for ~50% token savings on plan data. Rejected because:
+- Claude isn't natively trained on TOON; needs ~500 tokens of teaching examples
+- No npm library for TOON parsing; would need custom parser
+- Novel format introduces failure surface when Claude emits slightly-wrong TOON
+- The batch tool solves the same cost problem more directly by eliminating the re-sending of plan data, not by compressing it
+
+**R4 — Sonnet-only.** Initially I recommended Haiku as the cheaper default. Inbaraj tested both — Haiku had capability regressions (different option labels, prose-dumping metadata) that needed system prompt patches. The interactive metadata rule (D17) was the belt-and-braces fix so that Sonnet AND Haiku follow the same pattern. Net effect: both models work, Sonnet stays the recommended default for the submission demo (~$0.86/run), Haiku is the cheaper fallback (~$0.20-0.25/run predicted) for cost-sensitive runs.
+
+---
+
+---
+
 ## 1. Context & Goals
 
 Plansync is an AI agent that reads a project plan CSV/Excel file and creates it as a fully structured project (phases, tasks, subtasks, milestones, dependencies) in Rocketlane via their REST API. It exists because Rocketlane has no native CSV import for project plans, so implementation teams currently rebuild plans manually from exports of Smartsheet, MS Project, Asana, etc.

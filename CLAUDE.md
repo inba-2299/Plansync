@@ -40,9 +40,11 @@ Plansync is an AI agent that reads a project plan CSV and creates it as a fully 
 
 ## Tool count
 
-**21 total = 20 custom + 1 Anthropic server tool (`web_search`).**
+**22 total = 21 custom + 1 Anthropic server tool (`web_search`).**
 
-Groups: Input/context (3), Planning/metacognition (4), Memory (2), HITL (1 — the only blocking tool), Creation (5), Verification (2), Display (3), Runtime docs recovery (1 server tool).
+Session 4 added one new tool: **`execute_plan_creation`** — a batch execution tool that replaces the iterative "walk each phase/task/dependency one tool call at a time" pattern with a single deterministic backend call. The fine-grained creation tools (`create_phase`, `create_task`, `create_tasks_bulk`, `add_dependency`, etc.) still exist but are now used only for failure recovery and surgical edits. See MEMORY.md "Decision: `execute_plan_creation` batch tool — the architectural reversal" for the full story and the cost/speed impact.
+
+Groups: Input/context (3), Planning/metacognition (4), Memory (2), HITL (1 — the only blocking tool), Creation (6 — now includes the batch tool), Verification (2), Display (3), Runtime docs recovery (1 server tool).
 
 See `docs/PLAN.md` § "Tools" for the full table and rationale.
 
@@ -50,6 +52,7 @@ See `docs/PLAN.md` § "Tools" for the full table and rationale.
 
 **Railway backend (`agent/`):**
 - `ANTHROPIC_API_KEY`
+- `ANTHROPIC_MODEL` — **required, no fallback**. One of: `claude-haiku-4-5` (cheap, recommended for cost-sensitive runs), `claude-sonnet-4-5` (higher capability, ~4× cost), `claude-opus-4-5` (highest capability, expensive). Session 4 made this env-var configurable with NO hardcoded default — if missing, the loop fails fast with a clear error. See MEMORY.md "Decision: switch the hardcoded model constant to a Railway env var" for rationale.
 - `UPSTASH_REDIS_REST_URL`
 - `UPSTASH_REDIS_REST_TOKEN`
 - `ENCRYPTION_KEY` (32 bytes base64, for AES-GCM of the Rocketlane API key at rest)

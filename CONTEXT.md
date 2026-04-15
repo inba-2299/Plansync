@@ -6,177 +6,205 @@
 
 ## Last updated
 
-**2026-04-15, ~early afternoon — end of Session 3 (frontend UI rebuild + build fix).**
+**2026-04-15, ~mid-afternoon — Session 4 in progress, just shipped Commit 2a.6.**
 
 ## Status
 
-**FULL STACK IS LIVE END-TO-END.** Frontend UI matches the Google Stitch aesthetic. Backend is unchanged from Session 2 (already feature-complete). The one remaining gap tonight was the UI — that's now done.
+**FULL STACK IS LIVE AND VERIFIED END-TO-END ON SONNET.** First clean batch run completed successfully with Sample Plan.xlsx (21 tasks, 8 phases, 8 milestones, 12 dependencies, 3.5s execution time, $0.86/run cost). Haiku switch is next (predicted ~$0.20-0.25/run). Core architecture is stable. Remaining submission work is Custom App .zip + BRD document.
 
-- **Railway backend** v0.1.3: https://plansync-production.up.railway.app — 20 tools + real ReAct loop, 7-day session TTL
-- **Vercel frontend** (just redeployed from commit `d524250`): https://plansync-tau.vercel.app — new chat-first UI, 13 components matching Stitch designs, SSE streaming, agent-emitted cards
-- **Visual end-to-end test passed locally** (Playwright on localhost:3000 → Railway prod) earlier in the session. Screenshot at `docs/screenshots/ui-rebuild-verified.png` shows the chat, journey stepper, and `ApiKeyCard` rendering correctly with proper fonts + icons.
-- **Vercel build was broken for ~30 min** mid-session (ESLint error on an unused var + custom-font warnings). Fixed in commit `d524250` by switching Inter + Manrope to `next/font/google` and removing the unused const. Local `npm run build` now passes clean.
-- Inbaraj is about to click through the live Vercel URL to verify everything works in prod.
+- **Railway backend** v0.1.11: https://plansync-production.up.railway.app — batch `execute_plan_creation` tool + interactive metadata rule + env-var model + 429 retry + Rocketlane URL rule + execution plan final-state rule
+- **Vercel frontend** `56e353f`: https://plansync-tau.vercel.app — split UI (user left 40%, agent right 60%), pinned cards inside agent column, collapsible execution plan, 14px base font scaling, responsive fallback below 1024px
+- **Model**: `ANTHROPIC_MODEL=claude-sonnet-4-5` currently set on Railway (Inbaraj is about to flip to `claude-haiku-4-5` for Session 4's next test)
+- **Cost trajectory**: $3/run (pre-optimization, Sonnet) → $0.86/run (post-2e + all optimizations, Sonnet) → predicted $0.20-0.25/run (Haiku)
 
-**Next session is Session 4.** Focus: 5 product decisions discussed this morning, then Custom App .zip + BRD + submit.
+**Next focus**: Custom App .zip (30-45 min) + BRD document (45-60 min), then submit. Session 4 has already addressed every UX issue surfaced during testing; the remaining work is the two core deliverables and final submission.
 
-## Just completed (Session 3 — commits in reverse order)
+## Just completed (Session 4 — commits in chronological order)
 
-1. **Vercel build fix** (commit `d524250`):
-   - Removed unused `friendlyName` const from `components/ToolCallLine.tsx` (ESLint hard error)
-   - Ported Inter + Manrope from `<link rel="stylesheet">` in `app/layout.tsx` to `next/font/google` (fixes `@next/next/no-page-custom-font` warnings that Vercel treats as errors)
-   - Each font now has a CSS variable: `--font-inter`, `--font-manrope`
-   - `tailwind.config.ts` fontFamily updated to reference those variables first with the raw name as fallback
-   - Dropped the redundant Inter/Manrope `@import` from `globals.css` (next/font owns them now)
-   - Material Symbols Outlined stays as `@import` in `globals.css` because it's an icon font (next/font/google doesn't handle icon fonts)
-   - Verified locally: `npm run build` → `✓ Compiled successfully`, no ESLint errors, no font warnings, home route 53.9 kB / 141 kB First Load
-2. **Frontend UI rebuild — 13 components + chat shell + theme + lib** (commit `c95aa5f`): 3,255 lines across 25 files. The biggest push of Session 3.
-   - **Timeline renderers** (`frontend/components/`):
-     - `Chat.tsx` (721 lines) — orchestrator. Holds `messages[]`, `journey`, `streaming`, `memoryToasts`, `inputValue` state. SSE event handler maps each event type to state updates. Auto-starts on mount with a greeting message. Renders header + JourneyStepper + scrollable messages + footer input. `DisplayComponentRenderer` routes `display_component` events to the right agent-emitted component.
-     - `MessageBubble.tsx` — user + assistant text bubbles
-     - `ReasoningBubble.tsx` — streaming reasoning bubble, auto-collapses when next `tool_use_start` fires
-     - `ToolCallLine.tsx` — one-liner for `tool_use` blocks, expandable to show input + result JSON
-   - **Agent-emitted components** (`frontend/components/agent-emitted/` — 10 components):
-     - `JourneyStepper.tsx` — sticky top stepper, Framer Motion transitions, reads `journey_update` events
-     - `ApiKeyCard.tsx` — password-masked input + "Establish Connection" button, POSTs to `/session/:id/apikey`
-     - `FileUploadCard.tsx` — drag-drop + Browse Files, POSTs to Next.js `/api/upload` route which forwards to Railway
-     - `ExecutionPlanCard.tsx` — renders agent's TODO list from `create_execution_plan` with status icons
-     - `PlanReviewTree.tsx` — collapsible tree (phases → tasks → subtasks → milestones), dependency badges
-     - `PlanIntegrityPanel.tsx` — confidence score + validation checkmarks (new — added after reviewing Stitch designs)
-     - `ApprovalPrompt.tsx` — clickable option chips with special case: if the approval is an "API key" question, renders the `ApiKeyCard` instead
-     - `ProgressFeed.tsx` — live progress bar + phase indicator during execution
-     - `ReflectionCard.tsx` — purple-bordered metacognition card showing observation / hypothesis / next_action
-     - `CompletionCard.tsx` — final stats + "View in Rocketlane" button
-   - **Theme + layout** (`frontend/tailwind.config.ts`, `frontend/app/globals.css`, `frontend/app/layout.tsx`):
-     - Full Material 3-style tonal palette ported from Stitch: primary `#173ce5`, secondary `#4648d4`, tertiary `#6a1edb`, surface `#faf8ff`, full tonal scale (fixed/fixed-dim/container-lowest/low/high/highest)
-     - Status colors: success `#198038`, warning `#d12771`, info `#08bdba`
-     - Typography: Manrope for headlines, Inter for body, system mono for code
-     - Custom shadows (`card-sm` / `card` / `card-lg` / `card-xl`) using tinted blue
-     - Animations: `fade-in`, `slide-up`, `pulse-slow`
-     - Border radius scale: 0.25rem → 2rem
-   - **Lib** (`frontend/lib/`):
-     - `event-types.ts` — mirror of the agent backend's `AgentEvent` union type
-     - `cn.ts` — clsx wrapper
-     - `agent-client.ts` (162 lines) — `sendToAgent` SSE reader, `storeRocketlaneApiKey`, `uploadPlanFile`, `fetchJourney`
-   - **Upload proxy** (`frontend/app/api/upload/route.ts`): Next.js API route forwarding multipart uploads to the Railway `/upload` endpoint. Keeps the Railway URL out of the browser.
-   - **Visual end-to-end test**: ran on localhost:3000 via Playwright MCP. Confirmed fonts loaded (Manrope + Inter via `next/font`), Material Symbols rendered (not literal text), chat auto-greeted, agent streamed through `update_journey_state` → rendered stepper → emitted `request_user_approval` → `ApiKeyCard` appeared with agent's question + "Enter API Key" CTA. Screenshot saved to `docs/screenshots/ui-rebuild-verified.png`.
-3. **Session TTL bump** (commit `047cbcd`, v0.1.3): `agent/src/memory/redis.ts` — `SESSION_TTL_SECONDS` bumped from 48h to 7 days (`7 * 24 * 60 * 60`). Agreed to make this admin-configurable later, but 7 days is the right default for the demo window.
+Session 4 is a large session — 10+ commits addressing rate limits, UX issues, token optimization, the batch execution tool, and polish.
 
-## What's next (Session 4)
+### Phase 1: Session 3 carryover fixes (backend bugs from UI rebuild)
+These three commits fixed bugs reported during Session 3's first UI run. See MEMORY.md for detail.
 
-**Goal**: Ship everything that makes the submission complete, then fit in as many product additions as time allows.
+1. **`757d455`** — Material Symbols icon font + markdown rendering in chat bubbles. Two separate regressions from the UI rebuild: (1) `@import` in `globals.css` was silently invalidated because `next/font/google` injected its `@font-face` at byte 0 of the compiled CSS, pushing the `@import` past the required top position per CSS spec §7.1. Fix: load Material Symbols via `<link>` tag in `layout.tsx` with an `// eslint-disable-next-line @next/next/no-page-custom-font` comment. (2) Agent messages rendered raw markdown because `MessageBubble.tsx` and `ReasoningBubble.tsx` dumped `{content}` into divs with `whitespace-pre-wrap`. Fix: added `components/Markdown.tsx` using react-markdown + remark-gfm, wired into 4 sites (MessageBubble, ReasoningBubble, ReflectionCard, ApprovalPrompt context).
+2. **`f2e339e`** — Fixed the Anthropic 400 `tool_use` orphan bug. The agent loop pushed `toolResults` for non-blocking tool_uses to a local array, then broke out of the for loop on `request_user_approval` WITHOUT flushing those results to history. So when the user resumed with `uiAction`, the route handler pushed only the approval's tool_result — leaving the earlier tool_uses orphaned. Fix: added `pendingToolResults: AnthropicContentBlock[] | null` field to the Session type. `loop.ts` stashes accumulated tool_results before returning on block. `index.ts`'s `/agent` route handler prepends the stashed results to the new user message containing the approval's tool_result. Clears after use.
 
-**Deadline**: 2026-04-16 (tomorrow). Session 4 has approximately one working day.
+### Phase 2: Interrupted session UX fixes
+These commits arrived after Inbaraj flagged "chat input is enabled while agent is working" and "where's the upload widget":
 
-Session 4 is organized into two buckets. Must-ship items come first because they are submission blockers — if Session 4 runs out of time, anything in the stretch bucket gets pushed to post-submission.
+3. **`c315c09`** — Input lockout, reasoning collapse rules, paperclip upload, workspace confirmation rule. Changes:
+   - Chat input disabled when `streaming || awaitingUnanswered || uploading`, with state-aware placeholder
+   - Send button swaps to spinning `progress_activity` icon while streaming
+   - Reasoning bubbles use length heuristic (<200 chars = filler, auto-collapse on `tool_use_start`; else stay expanded). Always expanded on `awaiting_user` and `done`.
+   - Paperclip button added to footer, left of textarea, always visible when input enabled. Opens file picker, uploads via existing `/api/upload` → Railway `/upload` path.
+   - System prompt: added workspace confirmation rule (non-negotiable approval after `get_rocketlane_context`)
 
----
+### Phase 3: Token optimization pass 1 + rate limit + metadata gathering
 
-### Must-ship (submission blockers — do these first)
+4. **`5bb0084`** — Commit 1: env-var model, 429 retry, system prompt wording + cumulative progress rule + execution plan re-call rule, v0.1.6.
+   - Model switched from hardcoded `claude-sonnet-4-5` to env var `ANTHROPIC_MODEL`. No fallback — fails fast if not set.
+   - 429 retry loop around `anthropic.messages.stream()`. Reads `Retry-After` header, clamps to [0, 60]s, emits `rate_limited` SSE event to frontend, up to 3 retries.
+   - AgentEvent union gained `rate_limited` variant and `error.kind` field. Frontend mirrored.
+   - System prompt: cumulative-totals rule for `display_progress_update` (fixes the "3/3 items / 0%" self-contradiction by requiring agent to pass overall counts, not per-phase). Upload wording rule ("project plan (CSV or Excel)"). Execution plan re-call rule.
 
-Subtotal: ~4.5 hours. Do these in order. Do not start stretch items until all 5 are done.
+### Phase 4: Split UI layout (the big refactor)
 
-**Priority 1 — Full Shard FM Engine 62-row end-to-end run (1 hour)**
-- Author the full Shard FM Engine CSV per PRD §11 lines 888–895: 62 rows, 5 levels of nesting, multiple phases, milestones, cross-phase dependencies.
-- Run it end-to-end through the **live Vercel UI → live Railway backend → live Rocketlane workspace**. Not a localhost test, not a direct-POST script test — the real production path Janani will see in the demo.
-- Verify in Rocketlane that the created project matches: phase count, task count, subtask nesting depth, milestone flags, dependency links.
-- **This is the actual demo.** If this run fails, every other Session 4 priority is moot until it's fixed. Session 2's 4-row smoke test is not enough — it was synthetic and tiny. The 62-row scenario is the one that proves the agent handles real-world complexity.
+5. **`8416ffa`** — Commit 2a: Frontend split layout. Full rewrite of `Chat.tsx`. Two-column grid at lg breakpoint (agent left 60%, user right 40%), pinned cards full-width at top (ExecutionPlanCard, ProgressFeed). Classified every UiMessage to side: agent (reasoning, tool, plan review, reflection) or user (user messages, approvals, uploads, completion). Wide max-width (`max-w-screen-2xl` = 1536px) to fix the "A4 page" complaint. Mobile fallback: single chronological column via `lg:hidden`. Independent scroll per column.
 
-**Priority 2 — Edge case tests (1 hour)**
-These prove the agent is *agentic* (not a deterministic wizard) and they are the scenes that answer "where's the autonomy?" in the demo. Each is a scripted test the agent should handle via its built-in capabilities:
-- **Missing phase dates** → agent should derive them from child task min/max without asking
-- **Ambiguous DD/MM vs MM/DD dates** → agent should call `request_user_approval` with options, then `remember` the choice for the rest of the session
-- **Circular dependency injection** → agent should hit `validate_plan` error, call `reflect_on_failure`, fix the plan, re-validate, succeed (this is the marquee self-correction demo)
-- **Forced task creation failure** → agent should hit the error, call `reflect_on_failure`, use `retry_task` to recover
-- **Deep nesting (4-5 levels)** → verify agent handles it without flattening
-- **Orphan items** → agent should auto-group into "Ungrouped Tasks" phase without asking
+6. **`6d5951c`** — Commit 2a.1: Column swap (user LEFT 40%, agent RIGHT 60%) per Inbaraj's feedback that "you act on left, watch agent think on right." Also fixed the file-upload `tool_use` orphan bug — when the user uploaded via the inline FileUploadCard inside an ApprovalPrompt, `handleFileUploaded` was calling `sendUserMessage` (fresh text) instead of `sendUiAction` (tool_result for the pending approval). Added `resolveUploadOrSend` helper and `messagesRef` that both upload paths funnel through.
 
-**Priority 3 — Duplicate detection (30 min)**
-Cheap, defensive, hardens the demo against an embarrassing failure mode.
-- Add a rule to the system prompt: when `get_rocketlane_context` returns the existing projects list, the agent checks for a duplicate project name against the plan's proposed name. If found, the agent calls `request_user_approval` with options like "Overwrite existing", "Create new with suffix", "Abort".
-- No new tool needed — purely a system prompt addition. 30 minutes of work, protects against "agent creates Plansync E2E Test #47" during the demo.
+7. **`471364c`** — Commit 2a.2: Moved pinned cards INTO the agent column (sticky top) instead of full-width at the top. My previous design was eating ~500px of viewport with the 8-step execution plan. Now it's collapsible — shows a one-line compact bar with current step, click to expand. Added `CompactableExecutionPlan` helper component.
 
-**Priority 4 — Rocketlane Custom App .zip (30 min)**
-Core deliverable from the plan (§13). This is what demonstrates understanding of Rocketlane's extensibility model, not just its REST API.
-- `custom-app/manifest.json` — Rocketlane Custom App manifest pointing at `https://plansync-tau.vercel.app?embed=1`
-- `custom-app/index.html` — minimal iframe shell (if Rocketlane requires self-contained bundle)
-- `custom-app/icon.svg`
-- `custom-app/build.sh` — produces `plansync-custom-app.zip`
-- Frontend: `?embed=1` handler to hide the app header when running inside Rocketlane
-- Test: install the .zip in inbarajb.rocketlane.com, open Plansync tab from a project, verify full run works inside the iframe
+8. **`082a53c`** — Commit 2a.3: Fixed API key card regression with Haiku. My `ApprovalPrompt` detection required both `/api.?key/i` on the question AND `enter|submit|paste|provide` on the option labels. Haiku generated different option labels ("I have my API key ready") that didn't match. Broadened detection to question-only: `isApiKeyRequest = /api.?key/i.test(question)`. Same broadening for `isFileUploadRequest`. Plus system prompt hardening with exact request_user_approval shape for the API key flow.
 
-**Priority 5 — BRD + submit (1.5 hours)**
-- Write BRD (1-2 pages) pulling from `docs/DESIGN.md` + `docs/PLAN.md`
-- Focus on: problem, approach, why it's agentic (21 tools + planning + memory + reflection + journey + self-correction), demo link, repo link, Custom App .zip link
-- Upload BRD + demo CSV + Custom App .zip to Rocketlane Spaces
+### Phase 5: Token optimization pass 2 + interactive metadata rule
+
+9. **`9f40b39`** — Commit 2a.4: MAX_TOKENS raise (4096 → 16384), tool caching (`cache_control: ephemeral` on last tool schema → caches tools array after turn 1), reasoning-diet rule (prose only, no JSON in streaming text, <200 chars per bubble, compact JSON in tool inputs), journey-state-update-first rule, v0.1.8.
+
+10. **`fed1ace`** — Commit 2a.5: Interactive metadata gathering rule. Model-agnostic. Forbids prose-dumping multiple questions; requires sequential `request_user_approval` calls with options pre-populated from workspace context (customers, team members, dates). Concrete examples in the system prompt for every field type. Also: "infer defaults FIRST, ask only for what you can't infer" rule added to the Act-autonomously section.
+
+### Phase 6: THE BIG ONE — batch execution tool
+
+11. **`8834db5`** — **Commit 2e: `execute_plan_creation` batch tool, v0.1.10**. The architectural reversal that fixed the rate-limit wall permanently. Instead of 15-30 fine-grained tool calls during execution, the agent now calls ONE batch tool that does the full creation sequence deterministically on the backend.
+
+    - New tool `agent/src/tools/execute-plan-creation.ts` (~540 lines)
+    - Loads plan from artifact store by `planArtifactId` (from `display_plan_for_review`)
+    - Pass 1: depth-sorted item creation (phases → tasks → subtasks → milestones), populates `session.idmap`
+    - Pass 2: dependency creation via `add-dependencies` endpoint
+    - Emits `display_component:ProgressFeed` events throughout with cumulative percent
+    - Returns structured summary: projectId + counts + list of failures for targeted retry
+    - Fine-grained tools still exist as edge-case fallbacks (retry_task, create_task, add_dependency)
+    - System prompt updated: "execute_plan_creation is the happy path; fine-grained tools are for failure recovery only"
+
+    **Impact** (measured on first real run):
+    - Cost: $3/run → $0.86/run on Sonnet (~70% reduction)
+    - Token count: execution-phase tokens down ~10× (estimated)
+    - Execution time: ~60-120s → **3.5s** for a 21-item plan
+    - Rate limit wall: no longer hit
+    - Zero fuss, zero intervention, clean end-to-end run
+
+### Phase 7: Polish after the successful run
+
+12. **`56e353f`** — Commit 2a.6: Three small fixes after Inbaraj's end-to-end Sonnet run:
+    - **UI scale down to 14px base**. One-line `globals.css` change (`html { font-size: 14px; }`). Tailwind's rem-based sizing cascades — entire UI shrinks ~12.5% proportionally. Addresses "cards feel in-your-face".
+    - **Rocketlane URL format rule**. Agent was constructing `https://app.rocketlane.com/project/{id}` which is wrong twice (subdomain is customer-specific like `inbarajb.rocketlane.com`, path is `/projects/` plural). New system prompt section explicitly forbids `app.rocketlane.com`, mandates the correct format, and tells agent to derive subdomain from `get_rocketlane_context` or fall back to a relative path.
+    - **Execution plan final-state rule**. The pinned execution plan card was stuck showing "Step 5 of 6 / running" after a successful run because the agent jumped from `execute_plan_creation` straight to `display_completion_summary` without re-calling `create_execution_plan` with all steps done. New rule enforces strict tool call sequence at completion: `create_execution_plan` (all done) → `update_journey_state` (Execute + Complete done) → `display_completion_summary`.
+    - Version bump to 0.1.11.
+
+## Current architecture snapshot
+
+**Tools**: 21 custom + 1 Anthropic server (`web_search`) = **22 total**. New tool this session: `execute_plan_creation`. All other tools unchanged in signature.
+
+**Model routing**: `process.env.ANTHROPIC_MODEL` on Railway. No fallback — the loop emits a clear error and fails fast if the env var is missing. Recommended values: `claude-haiku-4-5` (cheap), `claude-sonnet-4-5` (higher capability), `claude-opus-4-5` (expensive).
+
+**Token optimization stack** (applied cumulatively):
+1. System prompt with `cache_control: ephemeral` (already present before Session 4)
+2. Tools array with `cache_control: ephemeral` on last schema (new in 2a.4) — caches ~2000 tokens of tool schemas after turn 1
+3. Reasoning diet rule (new in 2a.4) — prose only, no JSON, <200 chars per bubble
+4. Compact JSON rule (new in 2a.4) — no indentation in tool inputs
+5. Artifact store reference for plans (new in 2e via `planArtifactId` parameter) — plan JSON not re-inlined in `execute_plan_creation` input
+6. Batch execution (new in 2e) — 1-2 turns instead of 15-30 for the execution phase
+
+**Frontend layout**:
+- Desktop (≥1024px): Split layout with user workspace LEFT 40%, agent workspace RIGHT 60%. Pinned cards (execution plan + progress feed) inside agent column's scroll container, sticky at top. Execution plan collapsible (default collapsed). Chat input full-width at bottom.
+- Mobile (<1024px): Single chronological timeline. Pinned cards at top of scroll, rest of messages flow below.
+- Base font size: 14px (scaled down from browser default 16px). Everything cascades proportionally via Tailwind rem units.
+
+**New behavioral rules from Session 4**:
+1. Workspace confirmation approval after `get_rocketlane_context` (non-negotiable)
+2. Interactive metadata gathering (infer first, ask sequentially with pre-populated options)
+3. `execute_plan_creation` as the happy-path execution tool (fine-grained tools are fallback only)
+4. Rocketlane URL format rule (never `app.rocketlane.com`, always `{workspace}.rocketlane.com/projects/{id}`)
+5. Execution plan final-state rule (update to all-done before showing completion card)
+6. Reasoning text discipline (prose only, no JSON, <200 chars)
+7. Journey state "update first" rule (first tool call on resume should be `update_journey_state` if state needs to advance)
+8. API key flow rule (never ask user to "paste in next message" — always use `request_user_approval` which renders the secure ApiKeyCard)
+
+## What's next (Session 4 — remaining)
+
+**After Inbaraj's Haiku test succeeds**:
+
+### CORE DELIVERABLE 1 — Rocketlane Custom App .zip (30-45 min)
+This is one of the 6 core deliverables from the PRD (item 3). Demonstrates understanding of Rocketlane's extensibility model.
+
+Files to create:
+- `custom-app/manifest.json` — Rocketlane Custom App manifest per the spec, pointing at `https://plansync-tau.vercel.app?embed=1`
+- `custom-app/index.html` — iframe shell if Rocketlane requires a self-contained bundle (otherwise just a manifest + manifest.json is enough)
+- `custom-app/icon.svg` — Plansync lightning bolt icon
+- `custom-app/build.sh` — zip script producing `plansync-custom-app.zip`
+
+Frontend changes:
+- Add `?embed=1` URL param handler to `Chat.tsx` that hides the Plansync header when true (Rocketlane provides its own chrome)
+- Test embed: install the .zip in inbarajb.rocketlane.com, open Plansync tab from a project, verify full run works
+
+### CORE DELIVERABLE 2 — BRD document (45-60 min)
+One of the 6 core deliverables (item 4). 1-2 pages for Janani.
+
+Pull from:
+- `docs/DESIGN.md` — architectural decisions and trade-offs
+- `docs/PLAN.md` — tool list and agent invariants
+- `MEMORY.md` — session-by-session lessons
+
+Content: problem, approach, why it's agentic (22 tools, interactive metadata, reflection, runtime recovery, batch execution), architecture diagram, demo link, repo link, Custom App .zip link.
+
+### Submission (5-10 min)
+- Upload BRD + Custom App .zip + Sample Plan.xlsx demo CSV to Rocketlane Spaces
 - Submit to Janani
 
----
+## Testing state
 
-### Product additions (stretch — fit in if time allows)
+**Passed end-to-end on Sonnet (2026-04-15)**:
+- Sample Plan.xlsx (21 tasks, 8 phases, 8 milestones, 12 dependencies)
+- Batch tool `execute_plan_creation` fired cleanly
+- Interactive metadata flow: workspace confirmation → project name → customer → owner → dates → plan approval
+- Full project created in Rocketlane in ~3.5s execution time
+- Total run cost: $0.86 (from $7.15 → $8.01 in Anthropic console)
+- No rate limit wall hit
+- No max_tokens errors
+- No tool_use orphans
 
-Subtotal: ~5.5-6.5 hours. These are the 5 items discussed this morning (minus duplicate detection which moved to must-ship because it's cheap). Pick them up only after all must-ship items are done. Any that don't fit are post-submission work — Inbaraj explicitly said "don't cut scope" earlier, but these are genuinely *additions* to the plan, not core deliverables from the original PRD.
+**Next test**: Haiku 4.5 on the same Sample Plan.xlsx. Expected cost ~$0.20-0.25/run. Interactive metadata rule is model-agnostic so Haiku should follow the same flow as Sonnet.
 
-**Priority 6 — Admin portal `/admin` (2-3 hours)**
-HTTP Basic Auth protected route. This is a "show-off" feature — just for us to see sessions and tweak settings, not for end users. Scope:
-- HTTP Basic Auth middleware (credentials from `ADMIN_USER` + `ADMIN_PASS` env vars)
-- Model selection (swap `claude-sonnet-4-5` for another model per-session)
-- Settings: session TTL, max turns, rate limit overrides
-- Session list with artifact previews
-- Admin URL: `https://plansync-production.up.railway.app/admin` (or separate subdomain)
+**Remaining known UX bugs (known and deliberately deferred)**:
+- `ProgressFeed.tsx:29` uses `percent ?? fallback` — treats `0` as valid percent. May be masked now by the batch tool's always-correct percent. Verify during Haiku test. Fix queued as Commit 2b if still needed (one line).
+- `FileUploadCard.tsx` title says "Upload your project plan" — should revert to "Drag and drop file" per Stitch design. Queued as part of Commit 2c.
+- `ApprovalPrompt.tsx` file-upload branch still has a preamble wrapper with "Agent needs input" header above the FileUploadCard. Should be stripped so just the bare card renders. Queued as part of Commit 2c.
+- Rate limit errors still render as plain error bubbles, not a dedicated countdown card. Queued as part of Commit 2c.
+- No "Start new session" button in the generic error card. Queued as part of Commit 2c.
 
-**Priority 7 — Lessons feedback loop + knowledge base (2 hours)**
-The agent doesn't get smarter between sessions right now. Add a background "lessons" file that the agent reads at session start and writes to on notable events:
-- User corrects the agent's column mapping → agent records "user's CSVs typically have `task_name` in column 3" as a lesson
-- Agent encounters an API field rename → records the fix from `web_search` as a permanent lesson (not just session-scoped `remember`)
-- Admin can review + approve lessons before they get merged into the knowledge base
-- New tool: `record_lesson(observation, lesson, scope: "session"|"global")`
-- System prompt section: "Prior lessons learned from previous sessions" populated from the knowledge base at session start
+## Open questions for Inbaraj
 
-**Priority 8 — Create or update flow (1.5 hours)**
-Right now the agent only creates NEW projects. Users may want to update existing ones (add a phase to an in-flight project, sync a revised plan). Scope:
-- 5 new Rocketlane update tools: `update_project`, `update_phase`, `update_task`, `delete_task`, `move_task_to_phase`
-- Diff view: when duplicate detected + user chooses "Update existing", agent computes a diff between current state and new plan, renders a diff card, asks for approval before applying
-- System prompt addition: "If existing project detected AND user chooses update flow, compute diff → show → ask before mutating"
+- **Custom App iframe sandbox** — untested. Rocketlane may apply strict CSP that blocks iframes. Test in inbarajb.rocketlane.com before committing to the iframe approach. Fallback is a self-contained HTML bundle (bigger, more complex).
+- **BRD format** — Rocketlane Spaces as a page, or PDF upload? Need to check what Spaces accepts.
+- **Workspace subdomain for URL construction** — currently the agent derives it from `get_rocketlane_context` team member emails. Not bulletproof. Longer-term fix (post-submission): backend should surface the subdomain explicitly in the context response.
 
----
+## Deferred items (post-submission)
 
-### Time math for Session 4
+These are real features we discussed and decided to defer, not bugs:
 
-- **Must-ship total: ~4.5 hours** (4h actual work + 30 min buffer for things that break)
-- **Stretch total: ~5.5-6.5 hours**
-- **Combined: ~10-11 hours**
-
-One realistic working day is ~8-9 hours. That means **1-3 hours of stretch items will fit, not all of them.** The honest tradeoff: finishing must-ship first guarantees the submission is complete and the agentic story is proven. Whatever stretch items land on top are bonus — they make the "product" stronger but they're not what Janani will evaluate for "is this an agent."
-
-**My suggested cut order if time gets tight:** Drop Priority 8 (create-or-update) first — it's the most complex and least essential for the submission narrative. Then drop Priority 7 (lessons) second — it's a fantastic post-submission feature but requires admin portal infrastructure to be valuable. Keep Priority 6 (admin portal) if at all possible because it's the most demo-able of the three.
-
-### Carryover items from Session 3 that aren't Session 4 priorities
-
-- **Rocketlane tracking task status updates** — 21 tasks in phase "Agent Development" still marked "To do". Should be marked "Completed" before submission for the story, but it's a 5-minute cleanup and doesn't need its own priority slot. Do it alongside Priority 5 (BRD + submit).
-- **Account consolidation** (GitHub + Vercel + Railway on the same GitHub account) — deferred from Session 2. Not blocking submission. Post-submission cleanup.
-
-## Open questions for Inbaraj (Session 4)
-
-- **Admin portal credentials**: pick a username + password, set as env vars on Railway (`ADMIN_USER` + `ADMIN_PASS`)
-- **Knowledge base storage**: file in the repo (`knowledge-base.json`) or Redis key (`session:global:lessons`)? File is simpler, Redis is more robust. Probably file for now.
-- **Diff view rendering**: show as a side-by-side tree, inline diff within `PlanReviewTree`, or separate `PlanDiffCard` component?
-- **Custom App iframe sandbox**: untested — does Rocketlane apply strict CSP that breaks the iframe? Test tomorrow PM before committing to the approach.
-- **BRD format**: Rocketlane Spaces page (markdown-ish) or PDF upload?
+1. **Session persistence across page refreshes** — currently refresh creates a new sessionId, orphaning the 7-day Redis session. Fix requires: localStorage for sessionId, new `GET /session/:id/hydrate` endpoint on backend, Redis list storing SSE events for replay. ~2-3 hours of work. Documented in detail in Session 4 discussion.
+2. **62-row Shard FM Engine test** — originally Priority 1 for Session 4. Skipped by user decision because enough tests have been done with smaller plans and we're creating many test projects.
+3. **Gemini free-tier exploration** — user has free Gemini quota, wants to try it as an alternative model. Would require adding a second SDK client and a model abstraction layer.
+4. **Admin portal `/admin`** — was on the Session 4 discussion list, deferred to post-submission. HTTP Basic Auth, model selection UI, session list, TTL config.
+5. **Lessons feedback loop + knowledge base** — agent learns across sessions via persisted lessons. Also on the discussion list, deferred.
+6. **Create-or-update flow** — 5 new Rocketlane update tools + diff view UI. Also deferred.
+7. **Tailwind-merge for cn()** — would solve class conflicts in Markdown component but not needed with the current inheritance pattern.
+8. **Commit 2b + 2c** — UX polish. 2b may already be masked by 2e. 2c is ~30 min of polish. Low priority unless Inbaraj flags during Haiku test.
 
 ## Environment state (production)
 
 | Service | Status | URL |
 |---|---|---|
-| Railway backend | **LIVE v0.1.3**, all env vars set, 7-day session TTL | https://plansync-production.up.railway.app |
-| Vercel frontend | **LIVE** from commit `d524250` (fresh UI, `next/font` working) | https://plansync-tau.vercel.app |
-| GitHub repo | Up to date at `d524250` | https://github.com/inba-2299/Plansync |
-| Rocketlane workspace | Inbarajb's Enterprise trial | https://inbarajb.rocketlane.com |
+| Railway backend | **LIVE v0.1.11**, ANTHROPIC_MODEL set to sonnet (user will flip to haiku) | https://plansync-production.up.railway.app |
+| Vercel frontend | **LIVE** at `56e353f` with scaled UI + split layout | https://plansync-tau.vercel.app |
+| GitHub repo | Up to date at `56e353f` | https://github.com/inba-2299/Plansync |
+| Rocketlane workspace | Inbarajb's Enterprise trial, multiple test projects exist | https://inbarajb.rocketlane.com |
 | Upstash Redis | Connected and healthy (session TTL 7d) | — |
-| Anthropic API | Connected (claude-sonnet-4-5) | — |
+| Anthropic API | Connected, Sonnet 4.5 (will flip to Haiku) | — |
 
-**Railway env vars** (all set, confirmed via `/health`):
+**Railway env vars** (all set):
 - `ANTHROPIC_API_KEY`
+- `ANTHROPIC_MODEL` — Sonnet 4.5 currently, Inbaraj will flip to Haiku 4.5
 - `UPSTASH_REDIS_REST_URL`
 - `UPSTASH_REDIS_REST_TOKEN`
 - `ENCRYPTION_KEY`
@@ -186,39 +214,47 @@ One realistic working day is ~8-9 hours. That means **1-3 hours of stretch items
 
 | Thing | Status |
 |---|---|
-| `/Users/inbaraj/Downloads/plansync/` | Git repo synced to `origin/main` at `d524250` |
-| `agent/.env` | Filled in with real values (never committed) |
-| `frontend/.env.local` | Filled in, pointing at Railway URL |
-| `agent/node_modules` | Installed |
-| `frontend/node_modules` | Installed |
-| `frontend` local build | Passes clean (`npm run build` → compiled successfully) |
+| `/Users/inbaraj/Downloads/plansync/` | Git repo synced to `origin/main` at `56e353f` |
+| `agent/.env` | Must include `ANTHROPIC_MODEL` (user was reminded to set it locally) |
+| `frontend/.env.local` | Pointing at Railway URL |
+| `agent/node_modules`, `frontend/node_modules` | Installed |
+| Frontend `npm run build` | Clean |
+| Agent `npm run build` | Clean |
 
-## Commit history (Session 3)
+## Session 4 commit history (most recent first)
 
-- `d524250` — Fix Vercel build: switch to next/font + drop unused var
-- `c95aa5f` — Frontend UI rebuild: 13 components matching Stitch aesthetic + chat shell
-- `047cbcd` — Session TTL: 48h → 7 days (v0.1.3)
+- `56e353f` — Commit 2a.6: UI scale 14px + Rocketlane URL rule + execution plan final-state rule (v0.1.11)
+- `8834db5` — Commit 2e: execute_plan_creation batch tool (v0.1.10) ← **the big one**
+- `fed1ace` — Commit 2a.5: Interactive metadata gathering rule (v0.1.9)
+- `9f40b39` — Commit 2a.4: MAX_TOKENS=16384 + tool caching + reasoning diet + journey-first rule (v0.1.8)
+- `082a53c` — Commit 2a.3: API key card regression fix + system prompt hardening (v0.1.7)
+- `471364c` — Commit 2a.2: pinned cards moved into agent column + collapsible execution plan
+- `6d5951c` — Commit 2a.1: column swap (user LEFT 40%, agent RIGHT 60%) + file upload tool_result fix
+- `8416ffa` — Commit 2a: frontend split UI + responsive + wide layout + message routing
+- `5bb0084` — Commit 1: env-var model + 429 retry + cumulative progress rule (v0.1.6)
+- `c315c09` — Input lockout + reasoning collapse rules + paperclip upload + workspace confirmation
+- `f2e339e` — Tool_use orphan fix (pendingToolResults) (v0.1.4)
+- `757d455` — Material Symbols font + markdown rendering in chat bubbles
 
-Session 2 commits (for context): `f6ae9a4` → `9646527` → `d78e8a7` → `e115507` → `3d9c07d`. See the Session 2 block in the old CONTEXT.md (git log) or MEMORY.md for what each one did.
+Plus doc commits and smaller touches in between.
 
-## Known issues / risks to watch in Session 4
+## Known issues / risks for submission
 
-- **The Shard FM Engine 62-row end-to-end run is now Session 4 Priority 1.** It has never been executed against the live stack. Session 2's 4-row test was synthetic and tiny. If the 62-row run surfaces a bug (context bloat, timeout, RL API rate limit, validation failure pattern we haven't seen), every other Session 4 priority is on hold until it's fixed. Budget 1 hour; reserve 30 min buffer for any fix that comes up.
-- **Vercel deploy just finished** — as of this write, Inbaraj is about to click through the live UI. If anything broke in prod (CORS, SSE buffering, font loading on a different domain than localhost, `ApiKeyCard` POST flow, file upload forwarding), that needs fixing before Session 4 even starts. Feedback is pending.
-- **Edge case tests are Priority 2 and they're the demo story.** The circular-dependency → `reflect_on_failure` → self-correct flow is the marquee "this is an agent" moment. If this doesn't work cleanly, the narrative weakens significantly. Test this at least twice to make sure the reflection card actually renders prominently.
-- **Custom App iframe sandbox** — untested. Rocketlane may apply strict CSP that breaks the iframe. First thing to verify in Priority 4 before committing to the iframe approach; fallback is a self-contained HTML bundle.
-- **Session 4 time budget is tight.** Must-ship is ~4.5 hours, stretch is ~6 hours, total is ~10-11 hours. One working day = ~8-9 hours. The 5 product additions discussed this morning will NOT all fit if the must-ship bucket runs long. See "My suggested cut order" in the "What's next" section above for the tradeoff logic.
-- **Rocketlane tracking tasks still marked "To do"** — the 21 tracking tasks in phase "Agent Development" should be marked "Completed" before submission for the narrative. Folded into Priority 5 (BRD + submit) as a 5-minute cleanup.
+- **Haiku test unverified at time of writing**. Inbaraj is about to flip the env var and test. If Haiku fumbles the interactive metadata flow (which would be a capability regression), fallback is one env var flip back to Sonnet — zero code change.
+- **Custom App iframe sandbox untested**. Rocketlane CSP could block the iframe. Plan B is a self-contained HTML bundle with the app inlined (bigger, but avoids the iframe).
+- **BRD format decision pending** (Spaces page vs PDF vs GitHub markdown). 
+- **No real session hydration**. Refresh = new session. Inbaraj explicitly deferred this, but Janani may notice. Worth mentioning in the BRD as "documented post-submission work".
+- **Model env var must be set on Railway**. Already set. If removed, the agent fails at first request with a clear error. Not a silent failure.
 
 ## If the next session starts from a cold start
 
 ```bash
 # 1. Orient yourself
 cat CLAUDE.md       # project-specific Claude instructions
-cat CONTEXT.md      # (this file — what's in flight)
+cat CONTEXT.md      # (this file — where we are now)
 cat MEMORY.md       # why things are the way they are
-less docs/PLAN.md   # the original build plan
-less docs/DESIGN.md # the formal system design
+less docs/PLAN.md   # the canonical build plan
+less docs/DESIGN.md # formal system design (12+ architectural decisions)
 
 # 2. Sync with remote
 cd /Users/inbaraj/Downloads/plansync && git pull
@@ -227,7 +263,6 @@ cd /Users/inbaraj/Downloads/plansync && git pull
 curl -sS https://plansync-production.up.railway.app/health
 open https://plansync-tau.vercel.app    # visual check
 
-# 4. Pick up from "What's next" above — Session 4 starts with must-ship Priority 1
-#    (Full Shard FM Engine 62-row end-to-end run). This is the first thing to do —
-#    every other priority depends on the demo actually working on the target dataset.
+# 4. Check what's left in CONTEXT.md → "What's next"
+#    Core deliverables: Custom App .zip, BRD document
 ```
