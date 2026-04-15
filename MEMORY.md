@@ -347,6 +347,65 @@ Combined: ~6 hours of Session 4 work. Plus Custom App (30 min) + BRD + submit (~
 
 **Why defer instead of cut:** User was explicit in Session 1 — "please don't exclude items thinking about the deadline." These are all real product decisions, not nice-to-haves. The backend is done, so Session 4 can focus entirely on product additions + shipping.
 
+### Lesson: `@import` in globals.css is silently killed by `next/font/google` — use `<link>` for icon fonts
+
+**What happened (Session 3, late in the session):** After Inbaraj ran the UI on the live Vercel deployment, every Material Symbols icon rendered as its ligature name — "bolt", "psychology", "check_circle", "progress_activity", etc. — instead of the glyph. The UI looked like raw markup. Playwright inspection on the deployed page showed:
+1. `document.fonts` iterable had NO `Material Symbols Outlined` entry at all
+2. `document.styleSheets` had exactly ONE stylesheet, and it was NOT from `fonts.googleapis.com`
+3. `hasGoogleFontsImport: false`
+4. The `.material-symbols-outlined` class WAS applied, `font-family: "Material Symbols Outlined"` WAS set, `font-feature-settings: 'liga'` WAS set — but there was no `@font-face` declaration to back it
+
+**Root cause:** The `@import url('https://fonts.googleapis.com/...')` in `globals.css` was being invalidated per CSS spec §7.1. Byte-offset analysis of the deployed CSS bundle showed:
+- Byte **0**: first `@font-face` declaration (from next/font/google's Inter output)
+- Bytes **0 → 9711**: dozens more `@font-face` declarations (Inter + Manrope variants, all from next/font)
+- Byte **9712**: our `@import url("https://fonts.googleapis.com/...")`
+
+CSS spec requires `@import` rules to precede ALL other at-rules and style rules. Our import was at byte 9712, well past thousands of bytes of @font-face rules. The browser silently invalidates late imports per spec. Google Fonts stylesheet never loaded. Font-family existed but had no font file behind it. Browser fell back to Inter, which has no glyphs for "bolt" or "psychology", so it rendered the ligature names as literal text.
+
+**The gotcha**: `next/font/google` injects its `@font-face` declarations at the **top** of the final compiled CSS bundle. Our `globals.css` `@import` ends up AFTER them no matter where we write it in the source file — because next/font's output is stitched into the compiled CSS before our file's content. CSS spec then kills the import.
+
+**Why this was invisible locally:** the Playwright screenshot from earlier in Session 3 showed icons working on localhost. Probably a combination of browser cache from an earlier dev session and slightly different build output. The bug only surfaced on a clean browser session against a production build.
+
+**The fix**: Remove `@import` from `globals.css` entirely. Load Material Symbols via `<link rel="stylesheet">` in `app/layout.tsx` with an `// eslint-disable-next-line @next/next/no-page-custom-font` comment. This bypasses the CSS build pipeline — the browser fetches it as an HTML element request, independent of any CSS compilation. The ESLint rule is designed to catch regular text fonts that should be using `next/font/google`; it doesn't apply to icon fonts (which next/font cannot handle), so the disable is legitimate.
+
+**Also: add preconnect hints** for faster font loading:
+```tsx
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" />
+```
+
+**Verification (done via Playwright on the live Vercel page after the fix):**
+- `document.fonts` now contains `{family: "Material Symbols Outlined", status: "loaded", weight: "100 700"}`
+- `document.styleSheets` now includes the Google Fonts URL
+- An element with class `material-symbols-outlined` measures `widthPx: 24, heightPx: 24, fontSize: 24px` → width÷fontSize = 1.0, which is the geometric signature of a Material Symbols glyph (glyphs are designed to fit a 1em × 1em square). If the font had failed, the literal 4-char text "bolt" rendered in Inter would measure roughly 0.4× the font-size width.
+
+**Rule for future sessions**: If you ever need to load an external stylesheet that you can't route through `next/font`, use `<link>` in `layout.tsx` with the eslint-disable comment, NOT `@import` in globals.css. The @import path only works reliably in Next.js App Router if you have NO `next/font` calls anywhere in the app — the moment you use `next/font/google`, it takes ownership of the top of the CSS bundle and nothing else can sit there.
+
+### Lesson: Agent messages are markdown, so chat renderers need a markdown component
+
+**What happened:** In the same live Vercel run, the user saw messages like:
+```
+- **3 team members** available as project owners
+- **7 customer companies** available
+- **6 active projects** (I'll check for duplicates when you upload)
+
+**Now, please upload your CSV file** with your project plan...
+```
+rendered with the literal asterisks visible instead of bold text and proper list bullets. `MessageBubble.tsx` and `ReasoningBubble.tsx` were both just rendering `{content}` as a plain string with `whitespace-pre-wrap`. `ReflectionCard` and `ApprovalPrompt`'s `context` field had the same pattern.
+
+**Why this was missed in Session 2 testing:** the 4-row end-to-end test ran against a script endpoint (POST directly to `/agent`), not through the UI. There were no actual rendered chat bubbles to inspect. The first end-to-end run through the UI was Session 3, which is also when it showed up.
+
+**The fix**: Added `components/Markdown.tsx` — a shared react-markdown renderer with remark-gfm for GitHub-flavored markdown (bold, italic, lists, inline code, code blocks, links, tables, blockquotes, headings). Tight element styling designed for chat bubbles. The outer wrapper intentionally has NO font-size or color so parent containers control that without class conflicts. Wired into:
+- `MessageBubble.tsx` (agent role only — user messages stay plain text)
+- `ReasoningBubble.tsx` (only when `complete === true` — during streaming we keep plain text so partial markdown tokens like an unclosed `**` don't reflow the bubble on every delta)
+- `ReflectionCard.tsx` (observation, hypothesis, next_action fields)
+- `ApprovalPrompt.tsx` (context field)
+
+**Bundle cost**: react-markdown + remark-gfm is ~40 kB. Home route grew from 53.9 kB → 97 kB, First Load from 141 kB → 184 kB. Acceptable for the legibility improvement.
+
+**Rule for future sessions**: Any place in the UI that renders agent-produced text is probably rendering markdown, and needs to go through `components/Markdown.tsx`. Don't drop raw content into a `<div>` with `whitespace-pre-wrap` — that was the fast-write pattern we used initially and it was wrong.
+
 ### Lesson: Mid-build doc pauses cost less than I thought
 **What happened:** I started writing this doc update mid-way through Session 3, paused because of the Vercel build error, fixed the build, then resumed. The context I'd built up for the doc writing was still intact because the fix was self-contained (unused var + font loader).
 
