@@ -206,6 +206,22 @@ export async function runAgentLoop(
     }
 
     if (shouldBlock) {
+      // CRITICAL: Stash tool_results for any non-blocking tool_uses that
+      // ran BEFORE the request_user_approval in this same assistant turn.
+      // Anthropic's API requires that every tool_use block in an assistant
+      // message have a matching tool_result in the immediately-following
+      // user message. If we just pause and resume with only the approval's
+      // tool_result, the earlier tool_uses are orphaned and Anthropic
+      // returns a 400:
+      //
+      //   messages.N: `tool_use` ids were found without `tool_result`
+      //   blocks immediately after: toolu_...
+      //
+      // The /agent route handler, on resuming via uiAction, will prepend
+      // these stashed results to the new user message containing the
+      // approval's tool_result, so the next Anthropic request sees one
+      // tool_result per tool_use.
+      session.pendingToolResults = toolResults.length > 0 ? toolResults : null;
       return { outcome: 'awaiting_user' };
     }
 

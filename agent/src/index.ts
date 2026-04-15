@@ -59,7 +59,7 @@ app.get('/', (_req: Request, res: Response) => {
 app.get('/health', (_req: Request, res: Response) => {
   res.json({
     status: 'ok',
-    version: '0.1.3',
+    version: '0.1.4',
     env: {
       anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
       redis: Boolean(process.env.UPSTASH_REDIS_REST_URL),
@@ -244,13 +244,21 @@ app.post('/agent', async (req: Request, res: Response) => {
         }`,
       };
 
+      // Prepend any stashed tool_results from non-blocking tools that
+      // ran BEFORE the request_user_approval in the same assistant turn.
+      // See the big comment in agent/loop.ts where `pendingToolResults`
+      // is populated. This is what prevents the Anthropic 400 error
+      // "tool_use ids were found without tool_result blocks immediately
+      // after".
+      const stashed = session.pendingToolResults ?? [];
       session.history.push({
         role: 'user',
-        content: [toolResultBlock],
+        content: [...stashed, toolResultBlock],
       });
 
-      // Clear pending
+      // Clear pending state after consuming
       session.pending = null;
+      session.pendingToolResults = null;
     }
 
     // Run the ReAct loop

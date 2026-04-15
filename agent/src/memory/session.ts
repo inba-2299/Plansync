@@ -1,4 +1,5 @@
 import type {
+  AnthropicContentBlock,
   AnthropicMessage,
   ExecLogEntry,
   IdMapEntry,
@@ -29,6 +30,29 @@ export interface Session {
   journey: JourneyStep[];
   /** True if the agent is waiting for a human response (request_user_approval outstanding) */
   pending: PendingApproval | null;
+  /**
+   * Tool results that were computed BEFORE a `request_user_approval`
+   * tool_use in the same assistant turn.
+   *
+   * Why this exists: Anthropic's API requires that EVERY tool_use block
+   * in an assistant message have a matching tool_result block in the
+   * immediately following user message. When the agent emits multiple
+   * tool_uses in one turn (e.g. `update_journey_state` + then
+   * `request_user_approval`), we dispatch the non-blocking ones first
+   * and then need to pause the loop for the user's answer. We can't
+   * push the accumulated tool_results to history yet because the
+   * blocking tool's tool_result isn't known until the user answers —
+   * and pushing a partial user message to history would still fail
+   * the same Anthropic check on the next turn.
+   *
+   * Solution: stash the accumulated tool_results here. When the user
+   * answers (via a POST /agent with uiAction), the route handler
+   * prepends these to the new user message alongside the approval's
+   * tool_result, so the final user message contains ONE tool_result
+   * per tool_use from the preceding assistant message. Cleared after
+   * use.
+   */
+  pendingToolResults: AnthropicContentBlock[] | null;
 }
 
 export interface PendingApproval {
@@ -56,6 +80,7 @@ export function newSession(sessionId: string): Session {
     remember: {},
     journey: [],
     pending: null,
+    pendingToolResults: null,
   };
 }
 
@@ -94,6 +119,7 @@ export async function loadSession(sessionId: string): Promise<Session> {
     remember: parseRemember(remember ?? {}),
     journey: parseJourney(journey ?? {}),
     pending: parsePending(pending ?? {}),
+    pendingToolResults: parsePendingToolResults(pending ?? {}),
   };
 }
 
@@ -165,15 +191,22 @@ export async function saveSession(
   }
 
   // pending approval — replace or delete
+  // `pendingToolResults` is stored alongside in the same hash because
+  // it's scoped to the same "paused for user input" state.
   pipe.del(key.pending(sessionId));
-  if (session.pending) {
-    pipe.hset(key.pending(sessionId), {
-      toolUseId: session.pending.toolUseId,
-      question: session.pending.question,
-      options: JSON.stringify(session.pending.options),
-      context: JSON.stringify(session.pending.context ?? null),
-      createdAt: session.pending.createdAt,
-    });
+  if (session.pending || (session.pendingToolResults && session.pendingToolResults.length > 0)) {
+    const hash: Record<string, string | number> = {};
+    if (session.pending) {
+      hash.toolUseId = session.pending.toolUseId;
+      hash.question = session.pending.question;
+      hash.options = JSON.stringify(session.pending.options);
+      hash.context = JSON.stringify(session.pending.context ?? null);
+      hash.createdAt = session.pending.createdAt;
+    }
+    if (session.pendingToolResults && session.pendingToolResults.length > 0) {
+      hash.pendingToolResults = JSON.stringify(session.pendingToolResults);
+    }
+    pipe.hset(key.pending(sessionId), hash);
   }
 
   await pipe.exec();
@@ -258,6 +291,10 @@ function parseJourney(raw: Record<string, unknown>): JourneyStep[] {
 
 function parsePending(raw: Record<string, unknown>): PendingApproval | null {
   if (!raw || Object.keys(raw).length === 0) return null;
+  // If only `pendingToolResults` is set (no toolUseId), there's no pending
+  // approval — return null. This can happen if a prior session crashed or
+  // if a future tool pause doesn't go through request_user_approval.
+  if (!raw.toolUseId) return null;
   try {
     return {
       toolUseId: String(raw.toolUseId ?? ''),
@@ -270,6 +307,24 @@ function parsePending(raw: Record<string, unknown>): PendingApproval | null {
         typeof raw.context === 'string' ? JSON.parse(raw.context) : raw.context,
       createdAt: Number(raw.createdAt ?? Date.now()),
     };
+  } catch {
+    return null;
+  }
+}
+
+function parsePendingToolResults(
+  raw: Record<string, unknown>
+): AnthropicContentBlock[] | null {
+  if (!raw || !raw.pendingToolResults) return null;
+  try {
+    const parsed =
+      typeof raw.pendingToolResults === 'string'
+        ? JSON.parse(raw.pendingToolResults)
+        : raw.pendingToolResults;
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed as AnthropicContentBlock[];
+    }
+    return null;
   } catch {
     return null;
   }
