@@ -1,7 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { sendToAgent, fetchJourney, storeRocketlaneApiKey } from '@/lib/agent-client';
+import {
+  sendToAgent,
+  fetchJourney,
+  storeRocketlaneApiKey,
+  uploadPlanFile,
+} from '@/lib/agent-client';
 import type { AgentEvent, JourneyStep, UiAction } from '@/lib/event-types';
 import { JourneyStepper } from './agent-emitted/JourneyStepper';
 import { MessageBubble } from './MessageBubble';
@@ -101,6 +106,8 @@ export function Chat() {
   const currentReasoningStartedAtRef = useRef<number | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   // ---------- helpers ----------
 
@@ -155,12 +162,19 @@ export function Chat() {
         }
 
         case 'tool_use_start': {
-          // Close the current reasoning bubble (auto-collapse)
+          // Mark the previous reasoning bubble as complete. Collapse it
+          // ONLY if the content looks like filler ("I'll call X next" —
+          // under ~200 chars). Longer content is usually the agent
+          // actually saying something the user should read (e.g. workspace
+          // details after get_rocketlane_context, or error explanations),
+          // and we keep those expanded so the user doesn't miss them.
           const cid = currentReasoningIdRef.current;
           if (cid) {
-            updateMessage(cid, (m) =>
-              m.kind === 'reasoning' ? { ...m, complete: true, collapsed: true } : m
-            );
+            updateMessage(cid, (m) => {
+              if (m.kind !== 'reasoning') return m;
+              const isFiller = m.content.trim().length < 200;
+              return { ...m, complete: true, collapsed: isFiller };
+            });
           }
           currentReasoningIdRef.current = null;
           currentReasoningStartedAtRef.current = null;
@@ -247,7 +261,7 @@ export function Chat() {
           const cid = currentReasoningIdRef.current;
           if (cid) {
             updateMessage(cid, (m) =>
-              m.kind === 'reasoning' ? { ...m, complete: true, collapsed: true } : m
+              m.kind === 'reasoning' ? { ...m, complete: true, collapsed: false } : m
             );
             currentReasoningIdRef.current = null;
           }
@@ -272,7 +286,7 @@ export function Chat() {
           const cid = currentReasoningIdRef.current;
           if (cid) {
             updateMessage(cid, (m) =>
-              m.kind === 'reasoning' ? { ...m, complete: true, collapsed: true } : m
+              m.kind === 'reasoning' ? { ...m, complete: true, collapsed: false } : m
             );
             currentReasoningIdRef.current = null;
           }
@@ -385,14 +399,55 @@ export function Chat() {
 
   // ---------- File upload handler ----------
 
+  // Called by the inline FileUploadCard (when the agent emits it) after
+  // the card has already done the upload itself and just hands us the
+  // artifact metadata.
   const handleFileUploaded = useCallback(
     (artifactId: string, filename: string, rowCount: number) => {
-      // Send a follow-up message to the agent with the artifactId
       sendUserMessage(
         `I've uploaded "${filename}" — ${rowCount} rows. Artifact id: ${artifactId}. Please parse it and walk me through creating the project.`
       );
     },
     [sendUserMessage]
+  );
+
+  // Called by the paperclip button on the footer. Does the upload itself
+  // (POST to /api/upload via uploadPlanFile) and then resumes the agent
+  // with the same follow-up message. This is the "always-available" upload
+  // path — works whether or not the agent explicitly emitted a
+  // FileUploadCard.
+  const handlePaperclipFileSelected = useCallback(
+    async (file: File) => {
+      if (uploading || streaming) return;
+      setUploading(true);
+      try {
+        const result = await uploadPlanFile(sessionId, file);
+        if (!result.artifactId) {
+          addMessage({
+            kind: 'error',
+            id: `err-${Date.now()}`,
+            message: `Upload failed: ${result.error ?? 'unknown error'}`,
+            createdAt: Date.now(),
+          });
+          return;
+        }
+        // Show a user-visible confirmation bubble so they see what they sent
+        addMessage({
+          kind: 'user',
+          id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          content: `Uploaded: ${file.name} (${result.rowCount ?? '?'} rows)`,
+          createdAt: Date.now(),
+        });
+        // Resume the agent with the artifact metadata
+        sendUserMessage(
+          `I've uploaded "${file.name}" — ${result.rowCount ?? 'unknown'} rows. Artifact id: ${result.artifactId}. Please parse it and walk me through creating the project.`,
+          { showInList: false }
+        );
+      } finally {
+        setUploading(false);
+      }
+    },
+    [sessionId, uploading, streaming, addMessage, sendUserMessage]
   );
 
   // ---------- Auto-start on mount ----------
@@ -571,56 +626,115 @@ export function Chat() {
       </div>
 
       {/* Footer input area */}
-      <footer className="sticky bottom-0 backdrop-blur-md bg-surface/80 border-t border-outline-variant/30">
-        <div className="max-w-3xl mx-auto px-6 py-4">
-          <div className="flex items-end gap-2">
-            <div className="flex-1 bg-surface-container-lowest rounded-2xl shadow-card-sm border border-outline-variant/40 focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10 transition-all">
-              <textarea
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    if (!streaming && inputValue.trim()) {
+      {(() => {
+        // Compute the input state once so all three controls (paperclip, textarea, send) stay in sync.
+        const awaitingUnanswered = messages.some(
+          (m) => m.kind === 'awaiting' && !m.answered
+        );
+        const inputDisabled = streaming || awaitingUnanswered || uploading;
+        const placeholder = uploading
+          ? 'Uploading file…'
+          : streaming
+          ? 'Agent is working — please wait…'
+          : awaitingUnanswered
+          ? 'Please use the options above to continue…'
+          : 'Message Plansync agent…';
+
+        return (
+          <footer className="sticky bottom-0 backdrop-blur-md bg-surface/80 border-t border-outline-variant/30">
+            <div className="max-w-3xl mx-auto px-6 py-4">
+              <div className="flex items-end gap-2">
+                {/* Hidden file input — triggered by the paperclip button */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      handlePaperclipFileSelected(file);
+                      // Reset so selecting the same file again fires onChange
+                      e.target.value = '';
+                    }
+                  }}
+                />
+
+                {/* Paperclip — attach file */}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={inputDisabled}
+                  title="Attach CSV or Excel file"
+                  className={cn(
+                    'h-12 w-12 rounded-2xl flex items-center justify-center transition-all',
+                    'bg-surface-container-lowest border border-outline-variant/40',
+                    'text-on-surface-variant hover:text-primary hover:border-primary/40 hover:shadow-card-sm',
+                    'disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-on-surface-variant disabled:hover:border-outline-variant/40 disabled:hover:shadow-none'
+                  )}
+                >
+                  <span className="material-symbols-outlined text-xl">attach_file</span>
+                </button>
+
+                {/* Text input — disabled while the agent is working or awaiting a chip click */}
+                <div
+                  className={cn(
+                    'flex-1 bg-surface-container-lowest rounded-2xl shadow-card-sm border transition-all',
+                    inputDisabled
+                      ? 'border-outline-variant/30 opacity-70'
+                      : 'border-outline-variant/40 focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10'
+                  )}
+                >
+                  <textarea
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (!inputDisabled && inputValue.trim()) {
+                          sendUserMessage(inputValue);
+                          setInputValue('');
+                        }
+                      }
+                    }}
+                    placeholder={placeholder}
+                    disabled={inputDisabled}
+                    rows={1}
+                    className="w-full bg-transparent px-5 py-3 text-sm placeholder:text-outline focus:outline-none resize-none max-h-32 disabled:cursor-not-allowed"
+                  />
+                </div>
+
+                {/* Send */}
+                <button
+                  onClick={() => {
+                    if (!inputDisabled && inputValue.trim()) {
                       sendUserMessage(inputValue);
                       setInputValue('');
                     }
-                  }
-                }}
-                placeholder={
-                  streaming
-                    ? 'Agent is working… (you can type while it works)'
-                    : 'Message Plansync agent…'
-                }
-                disabled={false}
-                rows={1}
-                className="w-full bg-transparent px-5 py-3 text-sm placeholder:text-outline focus:outline-none resize-none max-h-32"
-              />
+                  }}
+                  disabled={inputDisabled || !inputValue.trim()}
+                  className={cn(
+                    'h-12 w-12 rounded-2xl flex items-center justify-center transition-all',
+                    'bg-gradient-to-br from-primary to-primary-container text-white shadow-card',
+                    'hover:scale-105 active:scale-95',
+                    'disabled:from-outline disabled:to-outline disabled:scale-100 disabled:cursor-not-allowed disabled:shadow-none'
+                  )}
+                >
+                  <span className="material-symbols-outlined text-xl">
+                    {streaming ? 'progress_activity' : 'arrow_upward'}
+                  </span>
+                </button>
+              </div>
+              <div className="text-[11px] text-on-surface-variant text-center mt-2 flex items-center justify-center gap-1.5">
+                <span className="material-symbols-outlined text-xs filled">verified_user</span>
+                {streaming
+                  ? 'Agent is working — please wait for it to finish before sending another message'
+                  : 'Your data is encrypted end-to-end and never used for training'}
+              </div>
             </div>
-            <button
-              onClick={() => {
-                if (!streaming && inputValue.trim()) {
-                  sendUserMessage(inputValue);
-                  setInputValue('');
-                }
-              }}
-              disabled={streaming || !inputValue.trim()}
-              className={cn(
-                'h-12 w-12 rounded-2xl flex items-center justify-center transition-all',
-                'bg-gradient-to-br from-primary to-primary-container text-white shadow-card',
-                'hover:scale-105 active:scale-95',
-                'disabled:from-outline disabled:to-outline disabled:scale-100 disabled:cursor-not-allowed disabled:shadow-none'
-              )}
-            >
-              <span className="material-symbols-outlined text-xl">arrow_upward</span>
-            </button>
-          </div>
-          <div className="text-[11px] text-on-surface-variant text-center mt-2 flex items-center justify-center gap-1.5">
-            <span className="material-symbols-outlined text-xs filled">verified_user</span>
-            Your data is encrypted end-to-end and never used for training
-          </div>
-        </div>
-      </footer>
+          </footer>
+        );
+      })()}
     </div>
   );
 }

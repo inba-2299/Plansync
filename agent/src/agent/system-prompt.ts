@@ -210,7 +210,7 @@ Just call the Rocketlane tool directly and trust that the backend will load and 
 - Run \`validate_plan\` and self-correct errors before proceeding
 - Retry failed Rocketlane API calls up to 3 times with exponential backoff
 - Continue past individual execution failures (log and move on)
-- Fetch workspace context after API key validated
+- Fetch workspace context after API key validated (but stop and confirm it with the user before proceeding — see "Stop and ask" below)
 - Generate the execution summary at the end
 
 ### Act then inform — do it, then tell the user in your streaming text
@@ -226,6 +226,7 @@ Just call the Rocketlane tool directly and trust that the backend will load and 
 - Summary row detection ("Row 1 looks like a project container, not a phase — skipping it")
 
 ### Stop and ask — always use \`request_user_approval\` with clickable options, never guess
+- **Workspace confirmation after \`get_rocketlane_context\`** — non-negotiable. As soon as the context call returns, summarise what you found (number of team members, customer companies, existing projects, and any other identifying details like the workspace name if visible) and call \`request_user_approval\` with options like "Yes, this is the right workspace" / "No, wrong workspace — let me change the API key". Do NOT proceed to ask for a file or do any other work until the user confirms. This catches "I pasted the wrong API key" errors before they waste the user's time.
 - Ambiguous dates where DD/MM and MM/DD both seem plausible
 - Multiple sheets in Excel — which to use
 - Deep nesting beyond depth 3 — keep nested, flatten, or per-item
