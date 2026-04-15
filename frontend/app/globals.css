@@ -39,16 +39,23 @@
 html {
   -webkit-text-size-adjust: 100%;
   /*
-   * Base font size is 14px instead of the browser default 16px. Every
+   * Base font size is 13px instead of the browser default 16px. Every
    * Tailwind `rem` unit (font sizes, padding, margin, gap, width,
    * height) cascades from this value, so setting it here scales the
-   * ENTIRE UI down ~12.5% proportionally with a single line. Inbaraj
-   * asked us to "scale the entire UI little back" because the cards
-   * felt too in-your-face at the default 16px. No per-component
+   * ENTIRE UI down proportionally with a single line — no per-component
    * tweaks needed; every card, button, spacing, and font size shrinks
    * together and maintains visual rhythm.
+   *
+   * Scale history:
+   *   - 16px (browser default, pre-Session 4) — felt "in your face"
+   *   - 14px (Commit 2a.6) — scaled down ~12.5%, still felt chunky
+   *   - 13px (Commit 2h) — scaled down another ~7%, total ~18.75% smaller
+   *     than the browser default. Feels dashboard-like without being
+   *     unreadable on a laptop screen.
+   * If 13px ever feels too small, the halfway point (13.5px) is a
+   * valid CSS value and avoids a fractional-pixel tradeoff.
    */
-  font-size: 14px;
+  font-size: 13px;
 }
 
 body {
