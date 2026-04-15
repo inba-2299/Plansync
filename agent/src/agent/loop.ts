@@ -47,7 +47,23 @@ import { dispatch, TOOL_SCHEMAS } from '../tools';
  *   - claude-opus-4-5   — highest capability, expensive
  */
 const MAX_TURNS = 40;
-const MAX_TOKENS = 4096;
+
+/**
+ * Ceiling on output tokens per single assistant turn. Hardcoded (not an
+ * env var) because there's effectively one right answer: high enough to
+ * never hit it. We're only billed for tokens ACTUALLY generated, so a
+ * high ceiling has zero cost impact unless output is actually that long.
+ *
+ * 16384 was chosen after 4096 started failing on plan-generation turns
+ * where the agent emits a full plan JSON (42 items × ~40 tokens each =
+ * ~1700 tokens) plus reasoning plus tool call input overhead. 4× that
+ * buys headroom for edge cases while still being well under the
+ * per-model caps (Haiku 4.5 / Sonnet 4.5 both support 64K output).
+ * If we ever see a max_tokens error at this limit, the right fix is
+ * probably a system prompt edit (make the agent more concise) rather
+ * than raising the ceiling further.
+ */
+const MAX_TOKENS = 16384;
 
 /**
  * 429 retry policy. Anthropic returns Retry-After in the response headers
@@ -129,6 +145,25 @@ export async function runAgentLoop(
     let rateLimitAttempt = 0;
     let streamSucceeded = false;
 
+    // Tools array with cache_control on the LAST tool. Anthropic's prompt
+    // caching cascades from any cache_control marker backwards: marking
+    // the last tool caches the entire tools array (and, combined with
+    // the cache_control on system prompt below, the system prompt too)
+    // as a single cache entry. After the first turn, subsequent turns
+    // reuse the cache at 10% of normal input cost for that span. Tools
+    // array alone is ~2000 tokens uncached → 200 effective tokens cached,
+    // saving ~1800 input tokens per turn after turn 1.
+    //
+    // Cast to any because the SDK's ToolParam type in this version doesn't
+    // know about cache_control on tools — the API supports it. Rebuilt
+    // every turn so cache_control always lands on the same anchor (last
+    // element) regardless of how TOOL_SCHEMAS is mutated.
+    const toolsWithCache = TOOL_SCHEMAS.map((t, i) =>
+      i === TOOL_SCHEMAS.length - 1
+        ? { ...t, cache_control: { type: 'ephemeral' as const } }
+        : t
+    );
+
     while (!streamSucceeded) {
       try {
         const stream = anthropic.messages.stream({
@@ -148,7 +183,7 @@ export async function runAgentLoop(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           messages: session.history as any,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          tools: TOOL_SCHEMAS as any,
+          tools: toolsWithCache as any,
         });
 
         const streamState: { currentToolUseId: string | null } = { currentToolUseId: null };
