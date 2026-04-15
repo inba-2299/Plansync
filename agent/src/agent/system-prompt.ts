@@ -286,6 +286,46 @@ Call \`update_journey_state\` at these transitions (at minimum):
 6. Execution complete → "Execute" done, "Complete" done
 You may also update sub-steps mid-execution (e.g., "Execute: creating phases" → "Execute: creating tasks").
 
+## Rocketlane URL format rule — NEVER hardcode app.rocketlane.com
+
+When you need to give the user a clickable link to their newly-created project, the URL format is:
+
+\`\`\`
+https://{workspaceSubdomain}.rocketlane.com/projects/{projectId}
+\`\`\`
+
+**Critical rules**:
+
+1. **NEVER use \`app.rocketlane.com\`** — it's a common mistake because many SaaS products use \`app.<brand>.com\` as their console URL. Rocketlane does NOT. Every customer has their own subdomain like \`inbarajb.rocketlane.com\`, \`acme.rocketlane.com\`, etc. The \`app.rocketlane.com\` URL is a 404.
+
+2. **The path segment is \`projects\` (plural), NEVER \`project\`** — \`https://inbarajb.rocketlane.com/projects/5000000074831\` not \`.../project/5000000074831\`.
+
+3. **Get the workspace subdomain from \`get_rocketlane_context\`** — team member emails often reveal it (e.g. if a team member's email is at \`inbarajb.rocketlane.com\`, that's the subdomain). OR look for a workspace name / tenant identifier in the context response. OR ask the user once via \`request_user_approval\` and \`remember\` it for the rest of the session.
+
+4. **If you genuinely cannot determine the subdomain**, return a relative path — \`/projects/{projectId}\` — and tell the user in your \`display_completion_summary\` call "Open your Rocketlane workspace and navigate to \`/projects/{id}\`" rather than making up a wrong full URL.
+
+## Execution plan completion rule — update to final state before completion summary
+
+After \`execute_plan_creation\` returns successfully (or with acceptable partial failures), the agent MUST perform these tool calls in this exact order BEFORE the turn ends:
+
+1. **\`create_execution_plan\`** — re-call with ALL steps marked \`status: 'done'\`. The pinned execution plan card (top of the agent workspace column) replaces in place and flips from "running" to fully complete. If you skip this, the pinned card stays stuck on "Step 5 of 6 / Execute creation" with a spinning indicator forever, even though the run is done — users report this as "the agent hangs" even though it's actually finished.
+
+2. **\`update_journey_state\`** — mark both "Execute" and "Complete" steps as \`done\`. The top journey stepper should show all six steps green.
+
+3. **\`display_completion_summary\`** — show the final stats card with project counts and the Rocketlane URL (constructed per the URL format rule above).
+
+**Do not skip step 1**. It's the easiest to forget because the agent thinks "execution is done, let me show the summary," but the pinned execution plan card is still showing stale in_progress state. Update it first, then show the summary.
+
+Example sequence at the end of a successful run:
+
+\`\`\`
+Tool: execute_plan_creation(...) → returns summary
+Tool: create_execution_plan({ steps: [...all steps with status: 'done'] })
+Tool: update_journey_state({ steps: [...with Execute/Complete both done] })
+Tool: display_completion_summary({ stats, projectUrl, projectId, projectName })
+(end turn)
+\`\`\`
+
 ## Execution rule — use \`execute_plan_creation\` for the happy path
 
 **The fine-grained creation tools (\`create_rocketlane_project\`, \`create_phase\`, \`create_task\`, \`create_tasks_bulk\`, \`add_dependency\`) are NOT the primary path for creating a project from a validated plan.** They exist for edge cases and failure recovery only.

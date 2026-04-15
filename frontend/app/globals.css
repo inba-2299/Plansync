@@ -38,6 +38,17 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  /*
+   * Base font size is 14px instead of the browser default 16px. Every
+   * Tailwind `rem` unit (font sizes, padding, margin, gap, width,
+   * height) cascades from this value, so setting it here scales the
+   * ENTIRE UI down ~12.5% proportionally with a single line. Inbaraj
+   * asked us to "scale the entire UI little back" because the cards
+   * felt too in-your-face at the default 16px. No per-component
+   * tweaks needed; every card, button, spacing, and font size shrinks
+   * together and maintains visual rhythm.
+   */
+  font-size: 14px;
 }
 
 body {
