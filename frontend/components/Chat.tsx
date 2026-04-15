@@ -378,7 +378,53 @@ export function Chat() {
         }
 
         case 'journey_update': {
-          setJourney(event.steps);
+          // Defensive normalization at the SSE event boundary.
+          //
+          // Same risk class as the dependsOn crash from Commit 2f: the
+          // backend types `steps` as JourneyStep[], but at runtime the
+          // event arrives as parsed JSON and could be malformed (non-
+          // array, missing status field, unknown status value). The
+          // JourneyStepper component does `steps.map(...)` and looks
+          // up `styles[step.status]` without guards — a malformed step
+          // would either crash the render or render a colorless pill.
+          //
+          // Normalize at the boundary: filter to well-shaped step
+          // objects, coerce status to a known value, ensure id and
+          // label are non-empty strings. Cheaper than hardening every
+          // downstream consumer and prevents a future "agent emits
+          // weird step shape" bug from turning into a UI crash.
+          const validStatuses: ReadonlyArray<JourneyStep['status']> = [
+            'pending',
+            'in_progress',
+            'done',
+            'error',
+          ];
+          // Re-cast through `unknown` because the typed event.steps is
+          // JourneyStep[] but we don't trust runtime to honor that.
+          const rawSteps: unknown[] = Array.isArray(event.steps)
+            ? (event.steps as unknown[])
+            : [];
+          const normalizedSteps: JourneyStep[] = [];
+          for (let idx = 0; idx < rawSteps.length; idx++) {
+            const item = rawSteps[idx];
+            if (item === null || typeof item !== 'object') continue;
+            const obj = item as Record<string, unknown>;
+            const id =
+              typeof obj.id === 'string' && obj.id.length > 0
+                ? obj.id
+                : `step-${idx}`;
+            const label =
+              typeof obj.label === 'string' && obj.label.length > 0
+                ? obj.label
+                : `Step ${idx + 1}`;
+            const status: JourneyStep['status'] =
+              typeof obj.status === 'string' &&
+              (validStatuses as readonly string[]).includes(obj.status)
+                ? (obj.status as JourneyStep['status'])
+                : 'pending';
+            normalizedSteps.push({ id, label, status });
+          }
+          setJourney(normalizedSteps);
           return;
         }
 

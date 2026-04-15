@@ -60,3 +60,11 @@ tmp/
 
 # Test artifacts (keep rl-api-contract.json — it's ground-truth API docs)
 test-project-*.json
+
+# Local screenshots from manual / Playwright testing — kept out of the
+# repo because they're transient artifacts, not documentation. Real
+# screenshots that should be preserved go in `docs/screenshots/`.
+*-test-*.png
+*-test-*.jpg
+*-screenshot-*.png
+*-screenshot-*.jpg

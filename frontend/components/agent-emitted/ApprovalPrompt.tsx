@@ -81,34 +81,28 @@ export function ApprovalPrompt({
 
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
 
-  // File upload special case — render the FileUploadCard inline
+  // File upload special case — render the FileUploadCard alone, no preamble.
+  //
+  // We used to wrap the card with a separate "Agent needs input" header
+  // block (icon + label + question + context). That stacked TWO headers
+  // for what should be one clean upload card: the wrapper's "Agent needs
+  // input / Please upload your project plan" sat directly above the
+  // FileUploadCard's OWN header "Drag and drop file / Supports CSV…".
+  // Visually it read as duplicate cards.
+  //
+  // The Stitch design treats the upload as a single self-explanatory
+  // card with no preamble. The question text is lost (we don't render
+  // it anywhere here) but the card's own headline is unambiguous about
+  // what's being requested. If the agent ever needs to communicate
+  // additional context for an upload, it can do that via the streaming
+  // text bubble before calling request_user_approval — not by stacking
+  // a header on the card.
   if (isFileUploadRequest && !answered) {
     return (
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        className="space-y-2"
       >
-        <div className="flex items-start gap-3 px-1">
-          <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-            <span className="material-symbols-outlined text-primary text-base">
-              upload_file
-            </span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-[10px] uppercase tracking-widest font-bold text-primary mb-0.5">
-              Agent needs input
-            </div>
-            <div className="font-headline font-bold text-on-surface text-base">
-              {question}
-            </div>
-            {context && (
-              <div className="text-xs text-on-surface-variant mt-1.5">
-                <Markdown content={context} />
-              </div>
-            )}
-          </div>
-        </div>
         <FileUploadCard sessionId={sessionId} onUploaded={onFileUploaded} />
       </motion.div>
     );

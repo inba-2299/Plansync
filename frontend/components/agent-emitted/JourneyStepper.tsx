@@ -63,10 +63,17 @@ function StepPill({ step }: StepPillProps) {
     error: 'error',
   } as const;
 
+  // Defensive: if backend ever emits a status outside the union, fall
+  // back to 'pending' so the pill still renders with valid styles.
+  // Chat.tsx normalizes journey_update events at the SSE boundary too
+  // (Commit 2c), so this is belt-and-suspenders.
+  const safeStatus: keyof typeof styles =
+    step.status in styles ? step.status : 'pending';
+
   return (
     <AnimatePresence mode="popLayout">
       <motion.div
-        key={step.status}
+        key={safeStatus}
         layout
         initial={{ opacity: 0, y: -4 }}
         animate={{ opacity: 1, y: 0 }}
@@ -74,21 +81,21 @@ function StepPill({ step }: StepPillProps) {
         transition={{ duration: 0.2 }}
         className={cn(
           'flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold whitespace-nowrap transition-all',
-          styles[step.status]
+          styles[safeStatus]
         )}
       >
         <span
           className={cn(
             'material-symbols-outlined text-base',
-            step.status === 'in_progress' && 'animate-spin'
+            safeStatus === 'in_progress' && 'animate-spin'
           )}
           style={
-            step.status === 'in_progress'
+            safeStatus === 'in_progress'
               ? { animationDuration: '2s' }
               : undefined
           }
         >
-          {icons[step.status]}
+          {icons[safeStatus]}
         </span>
         <span>{step.label}</span>
       </motion.div>

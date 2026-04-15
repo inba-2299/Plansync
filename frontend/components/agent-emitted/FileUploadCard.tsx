@@ -20,6 +20,30 @@ interface FileUploadCardProps {
  * which triggers the parent Chat.tsx to send a follow-up message to the
  * agent referencing the new artifact.
  */
+// Backend's enforced upload size limit. Mirror it client-side so users
+// see a clean error before a 50MB file silently uploads for 10s and
+// fails with a 413 from Express. Keep in sync with the
+// `express.raw({ type: 'star/star', limit: '10mb' })` middleware in
+// agent/src/index.ts (the actual `type` value is the wildcard MIME
+// pattern — written out here in words because the literal characters
+// would terminate this comment block).
+const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+
+/** Allowed file extensions — mirrors the `accept` attribute and the
+ * SheetJS-supported types we handle on the backend. */
+const ALLOWED_EXTENSIONS = ['.csv', '.xlsx', '.xls'];
+
+function hasAllowedExtension(filename: string): boolean {
+  const lower = filename.toLowerCase();
+  return ALLOWED_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function FileUploadCard({ sessionId, onUploaded }: FileUploadCardProps) {
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -33,6 +57,27 @@ export function FileUploadCard({ sessionId, onUploaded }: FileUploadCardProps) {
 
   const handleFile = async (file: File) => {
     setError(null);
+
+    // Client-side validation: extension and size BEFORE the upload starts.
+    // Without these, the backend's express.raw() limit produces a silent
+    // 10-second hang followed by a generic 413, and a wrong filetype lets
+    // SheetJS surface a confusing "no sheets found" parse error after the
+    // round trip. Both feel broken from the user's perspective.
+    if (!hasAllowedExtension(file.name)) {
+      setError(
+        `Unsupported file type. Plansync accepts ${ALLOWED_EXTENSIONS.join(', ')}.`
+      );
+      return;
+    }
+    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+      setError(
+        `File is ${formatBytes(file.size)} — the maximum is ${formatBytes(
+          MAX_UPLOAD_SIZE_BYTES
+        )}. Please trim the file or split the plan into smaller pieces.`
+      );
+      return;
+    }
+
     setUploading(true);
     try {
       const result = await uploadPlanFile(sessionId, file);
@@ -133,7 +178,7 @@ export function FileUploadCard({ sessionId, onUploaded }: FileUploadCardProps) {
               {uploading ? 'Uploading…' : 'Drag and drop file'}
             </div>
             <div className="text-xs text-on-surface-variant mt-1">
-              Support for .xlsx, .csv, and .xls (max 10 MB)
+              Supports CSV, XLSX, XLS — max 10 MB
             </div>
           </div>
 
