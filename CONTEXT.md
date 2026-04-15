@@ -6,18 +6,18 @@
 
 ## Last updated
 
-**2026-04-15, ~mid-afternoon — Session 4 in progress, just shipped Commit 2a.6.**
+**2026-04-15, late afternoon — Session 4 continuing post-compact, just shipped Commit 2f (application crash fix + error boundary).**
 
 ## Status
 
-**FULL STACK IS LIVE AND VERIFIED END-TO-END ON SONNET.** First clean batch run completed successfully with Sample Plan.xlsx (21 tasks, 8 phases, 8 milestones, 12 dependencies, 3.5s execution time, $0.86/run cost). Haiku switch is next (predicted ~$0.20-0.25/run). Core architecture is stable. Remaining submission work is Custom App .zip + BRD document.
+**FULL STACK IS LIVE AND VERIFIED END-TO-END ON SONNET.** First clean batch run completed successfully with Sample Plan.xlsx (21 tasks, 8 phases, 8 milestones, 12 dependencies, 3.5s execution time, $0.86/run cost). Haiku switch was mid-test when a frontend render bug (missing `dependsOn` on a plan item) caused a white-page crash — now fixed in Commit 2f with both surgical hardening AND a top-level error boundary. Core architecture is stable. Remaining submission work is Custom App .zip + BRD document.
 
-- **Railway backend** v0.1.11: https://plansync-production.up.railway.app — batch `execute_plan_creation` tool + interactive metadata rule + env-var model + 429 retry + Rocketlane URL rule + execution plan final-state rule
-- **Vercel frontend** `56e353f`: https://plansync-tau.vercel.app — split UI (user left 40%, agent right 60%), pinned cards inside agent column, collapsible execution plan, 14px base font scaling, responsive fallback below 1024px
-- **Model**: `ANTHROPIC_MODEL=claude-sonnet-4-5` currently set on Railway (Inbaraj is about to flip to `claude-haiku-4-5` for Session 4's next test)
+- **Railway backend** v0.1.12: https://plansync-production.up.railway.app — SSE heartbeat (every 15s) + batch `execute_plan_creation` tool + interactive metadata rule + env-var model + 429 retry + Rocketlane URL rule + execution plan final-state rule
+- **Vercel frontend** `e8981d9`: https://plansync-tau.vercel.app — split UI (user left 40%, agent right 60%), pinned cards inside agent column, collapsible execution plan, 14px base font scaling, responsive fallback below 1024px, **ErrorBoundary wrapping Chat**, **PlanReviewTree hardened against missing dependsOn**
+- **Model**: `ANTHROPIC_MODEL=claude-haiku-4-5` currently set on Railway
 - **Cost trajectory**: $3/run (pre-optimization, Sonnet) → $0.86/run (post-2e + all optimizations, Sonnet) → predicted $0.20-0.25/run (Haiku)
 
-**Next focus**: Custom App .zip (30-45 min) + BRD document (45-60 min), then submit. Session 4 has already addressed every UX issue surfaced during testing; the remaining work is the two core deliverables and final submission.
+**Next focus**: Custom App .zip (30-45 min) + BRD document (45-60 min), then submit. The application crash that emerged pre-compact is resolved. Custom App + BRD are the last two submission-blocking items.
 
 ## Just completed (Session 4 — commits in chronological order)
 
@@ -90,6 +90,17 @@ These commits arrived after Inbaraj flagged "chat input is enabled while agent i
     - **Rocketlane URL format rule**. Agent was constructing `https://app.rocketlane.com/project/{id}` which is wrong twice (subdomain is customer-specific like `inbarajb.rocketlane.com`, path is `/projects/` plural). New system prompt section explicitly forbids `app.rocketlane.com`, mandates the correct format, and tells agent to derive subdomain from `get_rocketlane_context` or fall back to a relative path.
     - **Execution plan final-state rule**. The pinned execution plan card was stuck showing "Step 5 of 6 / running" after a successful run because the agent jumped from `execute_plan_creation` straight to `display_completion_summary` without re-calling `create_execution_plan` with all steps done. New rule enforces strict tool call sequence at completion: `create_execution_plan` (all done) → `update_journey_state` (Execute + Complete done) → `display_completion_summary`.
     - Version bump to 0.1.11.
+
+### Phase 8: SSE heartbeat + application crash fix
+
+13. **`fa4bfa4`** — Commit 2a.7: SSE heartbeat every 15 seconds. Haiku runs were silently hanging at the Connect→Upload transition because a long Anthropic call with no SSE data was crossing the Railway/Cloudflare proxy idle timeout (~60s) and getting dropped. Frontend never saw an error — it just stopped receiving events. Fix: `startSseStream` now schedules a `setInterval` writing a `: keepalive <ISO>\n\n` comment-line every 15 seconds. SSE §9.2.6 says lines starting with `:` are comments ignored by the client but count as TCP activity for proxies. Cleaned up on `endSseStream` and `res.on('close')`. Railway v0.1.12.
+
+14. **`e8981d9`** — Commit 2f: Application crash fix + ErrorBoundary. Mid-Haiku run the production UI blanket-crashed with "Application error: a client-side exception has occurred" — blank page, no recovery. Root cause: `PlanReviewTree.tsx` line 237 accessed `item.dependsOn.length` unconditionally on every plan item. The backend's validator, display-plan-for-review, and execute-plan-creation all defensively check `Array.isArray(i.dependsOn)` — proving `dependsOn` can be missing, especially on Haiku-generated plans. When an item had no `startDate`, no `dueDate`, AND a missing `dependsOn`, the render fell through to `undefined.length` → uncaught TypeError → React unmounted the whole tree. Four-part fix:
+    - `PlanReviewTree`: new `normalizePlanItem()` that coerces every raw field at the Map-building boundary. Every field gets a safe default (arrays → `[]`, strings → fallback, enums → permissive variant). Downstream `PlanNode` also uses optional chaining on `dependsOn.length` as belt-and-suspenders.
+    - `Chat.tsx` awaiting_user handler: defensively type-check `event.payload.question` (string), `event.payload.options` (array of well-shaped entries), `event.payload.context` (string or null) before destructuring. Handles `payload === null` explicitly (loop.ts emits `payload: payload ?? null`).
+    - `CompletionCard`: removed the broken `app.rocketlane.com/projects/${projectId}` URL fallback. Now hides the "View in Rocketlane" button entirely if the agent didn't pass a fully-qualified `projectUrl`.
+    - `ErrorBoundary`: new class component (React error boundaries require classes) wrapping `Chat` in `app/page.tsx`. Catches any render crash in any agent-emitted card and renders a recoverable "Something went wrong" card with error details + "Reset view" (setState) and "Full reload" (window.location.reload) buttons. Second line of defense — doesn't fix bugs but converts white-page-of-death into recoverable error card.
+    - Verified: `npm run build` passes clean.
 
 ## Current architecture snapshot
 
@@ -195,8 +206,8 @@ These are real features we discussed and decided to defer, not bugs:
 
 | Service | Status | URL |
 |---|---|---|
-| Railway backend | **LIVE v0.1.11**, ANTHROPIC_MODEL set to sonnet (user will flip to haiku) | https://plansync-production.up.railway.app |
-| Vercel frontend | **LIVE** at `56e353f` with scaled UI + split layout | https://plansync-tau.vercel.app |
+| Railway backend | **LIVE v0.1.12**, ANTHROPIC_MODEL set to haiku, SSE heartbeat enabled | https://plansync-production.up.railway.app |
+| Vercel frontend | **LIVE** at `e8981d9` with scaled UI + split layout + ErrorBoundary + hardened PlanReviewTree | https://plansync-tau.vercel.app |
 | GitHub repo | Up to date at `56e353f` | https://github.com/inba-2299/Plansync |
 | Rocketlane workspace | Inbarajb's Enterprise trial, multiple test projects exist | https://inbarajb.rocketlane.com |
 | Upstash Redis | Connected and healthy (session TTL 7d) | — |

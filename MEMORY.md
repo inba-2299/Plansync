@@ -685,6 +685,39 @@ Each difference required a system prompt patch. Net effect: the system prompt gr
 - New: `execute_plan_creation` (batch execution tool)
 - All other tools unchanged in signature
 
+### Decision: application crash from missing `dependsOn` — frontend harden + error boundary
+
+**What happened.** Mid-Haiku run, after a successful clean refresh, the production UI (https://plansync-tau.vercel.app) blanket-crashed with "Application error: a client-side exception has occurred (see the browser console for more information)". No stack trace visible in the user's browser (production Next.js build has minified errors). I couldn't pull Vercel or Railway logs (neither CLI was authenticated locally), so I diagnosed by code reading.
+
+**Root cause.** `frontend/components/agent-emitted/PlanReviewTree.tsx` line 237 did:
+```tsx
+{(item.startDate || item.dueDate || item.dependsOn.length > 0) && (...)}
+```
+This assumes `item.dependsOn` is always an array. But the backend's validator, display-plan-for-review tool, and execute-plan-creation tool all defensively wrap `dependsOn` reads with `Array.isArray(i.dependsOn)` — proving that in practice, `dependsOn` can be missing. Haiku is especially lax about emitting empty arrays for optional fields (it often just omits them entirely).
+
+When a plan item lacks `dependsOn` AND has no `startDate` AND no `dueDate`, the short-circuit evaluation falls through to `undefined.length` → uncaught TypeError. Since there was no React error boundary anywhere in the tree, the crash propagated up to the app root and blanket-errored. The user saw a blank page with no recovery path.
+
+**Why I trusted the diagnosis without a stack trace.** The pattern of "worked after one refresh, then suddenly crashed" is the signature of a render-time type error on some subset of data: something got emitted that triggered the latent bug. I grepped the frontend for every `.length` access on fields that could be undefined and PlanReviewTree's `dependsOn.length` was the only unchecked one on a field that the backend itself treats as optional. Confirmation: the backend code in 3 separate files explicitly null-checks `dependsOn` before reading it — that's dispositive evidence the frontend's unchecked access is a bug.
+
+**The fix (4 parts, commit `e8981d9`).**
+1. **Normalize at the boundary** — `PlanReviewTree` now runs every raw plan item through a `normalizePlanItem()` function that coerces each field to a safe default (strings get fallbacks, numbers get `null`, arrays get `[]`, enums get the most permissive variant). Downstream renderers (the `PlanNode` component) no longer need to null-check fields individually because the shape is guaranteed at the map-building boundary.
+2. **Optional-chain the remaining unconditional reads** — the two `item.dependsOn.length` accesses inside `PlanNode` are now `item.dependsOn?.length ?? 0`. Belt-and-suspenders after normalization.
+3. **Harden `Chat.tsx` awaiting_user handler** — `loop.ts` emits `payload: payload ?? null`, meaning `event.payload` can legally be `null`. The old handler did `if (event.payload) { ... event.payload.question ... }`, which is fine for null but not for `{}` or malformed objects. New handler destructures with type guards: `typeof rawPayload.question === 'string'`, `Array.isArray(rawPayload.options)`, and filters options to only well-shaped entries.
+4. **Fix CompletionCard URL fallback** — the old `finalUrl` calculation fell back to `https://app.rocketlane.com/projects/${projectId}` when only `projectId` was provided, but `app.rocketlane.com` isn't a real tenant (Rocketlane URLs are always workspace-scoped). System prompt already instructs the agent to emit fully-qualified `projectUrl`; the frontend now hides the "View in Rocketlane" button entirely when no URL is provided instead of rendering a dead link.
+
+**The second line of defense — `ErrorBoundary`.** Even after hardening PlanReviewTree, a render crash in any OTHER agent-emitted card (or any future agent-emitted card) would still white-page the app. So I added `frontend/components/ErrorBoundary.tsx` — a class component (required for React's error boundary API — function components have no equivalent) wrapping Chat in `app/page.tsx`. On any thrown render error, it catches via `getDerivedStateFromError` and renders a recovery card with:
+- The error message (not the full stack — avoid leaking internals)
+- A "Reset view" button (calls `setState({ error: null })` to retry the subtree)
+- A "Full reload" button (nuclear option — `window.location.reload()`)
+
+This doesn't fix bugs, but it converts "white page of death" into "recoverable error card with retry", which is the difference between a broken app and a robust one.
+
+**Lesson: "backend defensively handles X" is a strong signal the frontend needs to too.** The backend had three separate `Array.isArray(i.dependsOn)` defensive checks. That pattern is a tell — it means the author encountered `dependsOn` being missing in practice and decided to handle it. If the backend handles it, the frontend must too. When you find defensive checks in one part of the stack, grep for the same field in the OTHER part of the stack and make sure the defense is mirrored. Type systems help — but if the type declares `dependsOn: string[]` and the runtime reality is `dependsOn?: string[]`, the type is a lie and the type system can't save you.
+
+**Lesson: always add an error boundary before shipping an agent-driven UI.** An agent-driven UI is by definition dynamic — the agent decides what cards to render, what props to pass, what shapes to emit. The UI cannot enforce a schema on what the agent produces without becoming brittle. Given that reality, a top-level error boundary is mandatory, not optional. Without one, ANY render-time bug in ANY agent-emitted component blanket-crashes the app with no recovery path. This should have been in the v0.1.0 codebase. It's now in.
+
+**Lesson: next/font adds CSS compilation order constraints that @import can't satisfy.** Already captured earlier in Session 4 (icons via `<link>` instead of `@import`), but reiterating here as a pattern — next/font is invasive. If you use it, assume every other CSS mechanism that relies on ordering (`@import`, CSS layers, some bundler features) may be affected. `<link rel="stylesheet">` in the HTML `<head>` bypasses the issue because it's not part of the compiled CSS at all.
+
 ---
 
 ## Session 5+ — (to be filled in as sessions happen)
