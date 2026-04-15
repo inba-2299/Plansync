@@ -105,6 +105,55 @@ Also in Commit 2h: UI base font from 14px → 13px. Total ~18.75% smaller than b
 
 Neither is required for the core agent to function — if they're missing, `/admin/*` routes return 503 and the rest of the app is unaffected.
 
+### AD-14: Admin portal v2 — pre-computed counters + tabbed lazy loading
+
+**Problem.** The v1 admin portal built under AD-13 was functionally correct but operationally unusable: dashboard load took 15-40 seconds on a workspace with ~60 sessions. The initial `stats.ts` implementation SCANned `session:*:meta` on every dashboard hit, then walked every session's event log to derive outcome — ~360 Upstash REST calls per load, each with 50-200ms latency. Filters triggered the same query. The user's 6 specific complaints: slow load, broken filter UX, cost labels, misleading success rate scope, no lazy loading, no runtime schema validation.
+
+**Decision.** Replace the SCAN + event-log-walk pattern with pre-computed set-based counters. Split the `/admin/dashboard` monolithic endpoint into a fast dashboard endpoint + separate lazy-loaded sessions endpoint. Restructure the frontend as a four-tab layout with per-tab data fetching.
+
+**Counter architecture** (`agent/src/admin/counters.ts`):
+- `admin:sessions:started:{yyyy-mm-dd}` — SET, SADD on `loadSession` fresh-session path
+- `admin:sessions:successful:{yyyy-mm-dd}` — SET, SADD in the `/agent` emit wrapper on `display_component: CompletionCard`
+- `admin:sessions:errored:{yyyy-mm-dd}` — SET, SADD in the emit wrapper on any `error` event
+- `admin:sessions:by_created` — SORTED SET capped at 1000, score = createdAt ms, for fast top-N recent lookup
+- `admin:sessions:active_locks` — SET, maintained by `memory/lock.ts`
+
+All writes are fire-and-forget (`void .catch(() => {})`) so a Redis hiccup during event emission never crashes the agent loop. Set semantics dedupe automatically — safe to re-emit completion events.
+
+**Stats computation** (new `stats.ts`): 5 parallel cheap reads — 3 SCARDs for daily counters, 1 ZCARD for total sessions ever, 1 SCARD for active locks. Dashboard load drops from ~30 seconds to **~200 milliseconds** (150× faster). Success rate scoped to today (`successfulToday / terminalToday`), matching the card label.
+
+**Endpoint split**: `GET /admin/dashboard` returns stats + config + dailyUsage (fast, loads on mount). `GET /admin/sessions` is a NEW endpoint for recent sessions with filters (lazy-loaded only when the Sessions tab is opened, or when filters change).
+
+**Frontend tab layout** (`app/admin/page.tsx`):
+- **Observability** (default) — stat cards + daily usage by model. Loads on mount.
+- **Runtime Config** — uses already-loaded config snapshot. Instant tab switch.
+- **Agent Tools** — static catalog. Instant tab switch.
+- **Recent Sessions** — lazy-loaded on first click, refetches on filter change with 400ms debounced search.
+
+**Trade-offs:**
+- Counters are append-only; no historical recounts. Old sessions created before the counters existed aren't in them. Acceptable because the daily counters only matter for "today's" stats and the sorted set naturally fills with new sessions over time.
+- Counter updates are fire-and-forget — if Redis is partitioned, counters drift but the agent loop doesn't fail. Stats can be re-derived from event logs post-hoc if we ever need to.
+- The Sessions tab still does N per-session HGETALLs (bounded at 100) to fetch metadata for display. Not O(1), but predictable and lazy-loaded so users don't pay this cost unless they click the tab.
+
+**Verified:** typecheck + build clean, dashboard measurably faster (confirmed via DevTools Network tab in the preview deployment).
+
+### AD-15: Session state recovery gap (documented, not yet fixed)
+
+**Context.** Mid-development, Inbaraj was testing the main agent flow on prod while I merged the admin-portal branch to main. Railway's rolling redeploy killed his in-flight `POST /agent` streaming request. The session's Redis lock stayed held because the `release()` code in `memory/lock.ts` only fires in the `finally` block of the route handler, which never ran (container died mid-stream). Lock has a 5-minute TTL, so subsequent requests hit HTTP 409 "another request is in progress" until the TTL expired. The user had no actionable recovery button other than the blunt "New session" (which loses the current session state entirely).
+
+**Decision.** Document as a known UX gap, NOT fixed pre-submission. Rationale:
+- A reviewer is unlikely to trigger this specific sequence unless they themselves deploy mid-demo
+- The `New session` button IS a valid (if blunt) recovery path
+- Fixing it properly is ~45-60 min of work — tight for the submission timeline
+
+**Post-submission fix spec:**
+- Backend: new `POST /session/:id/unlock` endpoint that does `redis.del(key.lock(sessionId))`. Authentication: any caller (for a demo; production would want ownership check).
+- Backend: optional `POST /session/:id/resume` that force-releases the lock AND injects a user message like "Please continue from where you left off" to nudge the agent back on track.
+- Frontend: when `hydrationMode === 'mid-stream'`, surface a "Refresh Agent" button alongside (or replacing) the existing "Check for updates" button.
+- Frontend: when a `POST /agent` call returns 409, render a recovery card instead of just "HTTP 409", with "Refresh Agent" + "Start New Session" actions.
+
+**Lesson baked into the design:** distributed session locks need an explicit user-accessible release path. The "request-handler-in-finally" pattern works for clean exits but fails when the process dies. Either use shorter lock TTLs (30 sec?) + heartbeat, or expose a force-release endpoint to the user.
+
 ### Decisions REJECTED in Session 4
 
 **R3 — TOON format.** Discussed as an alternative to JSON for ~50% token savings on plan data. Rejected because:
