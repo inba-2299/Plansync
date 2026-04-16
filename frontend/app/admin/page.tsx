@@ -85,6 +85,7 @@ export default function AdminDashboardPage() {
   // ---------- Config form state (pending edits) ----------
   const [pendingModel, setPendingModel] = useState<string>('');
   const [pendingMaxTokens, setPendingMaxTokens] = useState<string>('');
+  const [pendingTemperature, setPendingTemperature] = useState<string>('');
   const [pendingMaxRetries, setPendingMaxRetries] = useState<string>('');
   const [savingConfig, setSavingConfig] = useState(false);
 
@@ -111,6 +112,7 @@ export default function AdminDashboardPage() {
       setDashboard(res.data);
       setPendingModel(res.data.config.model.effective);
       setPendingMaxTokens(String(res.data.config.maxTokens.effective));
+      setPendingTemperature(String(res.data.config.temperature?.effective ?? 1));
       setPendingMaxRetries(String(res.data.config.maxRetries.effective));
       setPendingDisabled(new Set(res.data.config.disabledTools));
     }
@@ -215,11 +217,7 @@ export default function AdminDashboardPage() {
     if (savingConfig) return;
     setSavingConfig(true);
     try {
-      const patch: {
-        model?: string | null;
-        maxTokens?: number | null;
-        maxRetries?: number | null;
-      } = {};
+      const patch: Record<string, unknown> = {};
       if (pendingModel && pendingModel !== dashboard?.config.model.effective) {
         patch.model = pendingModel;
       }
@@ -230,6 +228,15 @@ export default function AdminDashboardPage() {
         mt !== dashboard?.config.maxTokens.effective
       ) {
         patch.maxTokens = mt;
+      }
+      const temp = Number(pendingTemperature);
+      if (
+        Number.isFinite(temp) &&
+        temp >= 0 &&
+        temp <= 1 &&
+        temp !== (dashboard?.config.temperature?.effective ?? 1)
+      ) {
+        patch.temperature = temp;
       }
       const mr = Number(pendingMaxRetries);
       if (
@@ -256,6 +263,7 @@ export default function AdminDashboardPage() {
     savingConfig,
     pendingModel,
     pendingMaxTokens,
+    pendingTemperature,
     pendingMaxRetries,
     dashboard,
     loadDashboard,
@@ -318,10 +326,12 @@ export default function AdminDashboardPage() {
     if (pendingModel !== dashboard.config.model.effective) return true;
     if (Number(pendingMaxTokens) !== dashboard.config.maxTokens.effective)
       return true;
+    if (Number(pendingTemperature) !== (dashboard.config.temperature?.effective ?? 1))
+      return true;
     if (Number(pendingMaxRetries) !== dashboard.config.maxRetries.effective)
       return true;
     return false;
-  }, [dashboard, pendingModel, pendingMaxTokens, pendingMaxRetries]);
+  }, [dashboard, pendingModel, pendingMaxTokens, pendingTemperature, pendingMaxRetries]);
 
   // ============================================================================
   // Render
@@ -634,6 +644,27 @@ export default function AdminDashboardPage() {
                   />
                   <div className="mt-1.5 text-[11px] text-on-surface-variant">
                     Default: {config.maxTokens.envDefault.toLocaleString()}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">
+                    Temperature
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range"
+                      value={pendingTemperature}
+                      onChange={(e) => setPendingTemperature(e.target.value)}
+                      min={0}
+                      max={1}
+                      step={0.1}
+                      className="flex-1 accent-primary"
+                    />
+                    <span className="text-sm font-mono font-semibold text-on-surface w-10 text-right">{Number(pendingTemperature).toFixed(1)}</span>
+                  </div>
+                  <div className="mt-1.5 text-[11px] text-on-surface-variant">
+                    0 = deterministic, 1 = creative. Default: {config.temperature?.envDefault ?? 1}
                   </div>
                 </div>
 

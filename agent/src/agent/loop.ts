@@ -8,6 +8,7 @@ import { dispatch, TOOL_SCHEMAS } from '../tools';
 import {
   getEffectiveModel,
   getEffectiveMaxTokens,
+  getEffectiveTemperature,
   getEffectiveMaxRetries,
   getDisabledTools,
 } from '../admin/config';
@@ -117,6 +118,7 @@ export async function runAgentLoop(
       return { outcome: 'error', error: 'model_not_configured' };
     }
     const maxTokens = await getEffectiveMaxTokens();
+    const temperature = await getEffectiveTemperature();
     const maxRateLimitRetries = await getEffectiveMaxRetries();
     const disabledToolNames = new Set(await getDisabledTools());
 
@@ -186,6 +188,7 @@ export async function runAgentLoop(
         const stream = anthropic.messages.stream({
           model,
           max_tokens: maxTokens,
+          temperature,
           // Cast to any because the SDK's TextBlockParam type in this version
           // doesn't know about cache_control yet — but the API supports it.
           // Ephemeral cache cuts input tokens ~70% on multi-turn runs.

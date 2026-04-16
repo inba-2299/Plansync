@@ -31,6 +31,7 @@ import {
   getAdminConfigSnapshot,
   setModel,
   setMaxTokens,
+  setTemperature,
   setMaxRetries,
   setDisabledTools,
 } from './admin/config';
@@ -683,6 +684,8 @@ app.post('/admin/config', requireAdminAuth, async (req: Request, res: Response) 
     if ('model' in body) promises.push(setModel(body.model ?? null));
     if ('maxTokens' in body)
       promises.push(setMaxTokens(body.maxTokens ?? null));
+    if ('temperature' in body)
+      promises.push(setTemperature((body as Record<string, unknown>).temperature as number | null));
     if ('maxRetries' in body)
       promises.push(setMaxRetries(body.maxRetries ?? null));
 

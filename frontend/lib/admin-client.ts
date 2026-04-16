@@ -120,6 +120,7 @@ export interface DashboardStats {
 export interface AdminConfigSnapshot {
   model: { effective: string; hasOverride: boolean; envDefault: string | undefined };
   maxTokens: { effective: number; hasOverride: boolean; envDefault: number };
+  temperature: { effective: number; hasOverride: boolean; envDefault: number };
   maxRetries: { effective: number; hasOverride: boolean; envDefault: number };
   disabledTools: string[];
 }

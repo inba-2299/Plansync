@@ -17,6 +17,7 @@ import { getRedis } from '../memory/redis';
  *   admin:config:model           → ANTHROPIC_MODEL override (string)
  *   admin:config:maxTokens       → max_tokens override (number)
  *   admin:config:maxRetries      → 429 retry cap override (number)
+ *   admin:config:temperature     → temperature override (0.0-1.0)
  *   admin:config:disabledTools   → JSON array of tool names to hide
  *
  * Every setter uses a one-shot write. Every getter tries Redis, then
@@ -27,11 +28,13 @@ import { getRedis } from '../memory/redis';
 const KEY_MODEL = 'admin:config:model';
 const KEY_MAX_TOKENS = 'admin:config:maxTokens';
 const KEY_MAX_RETRIES = 'admin:config:maxRetries';
+const KEY_TEMPERATURE = 'admin:config:temperature';
 const KEY_DISABLED_TOOLS = 'admin:config:disabledTools';
 
 /** Defaults — used when Redis has no override AND env var is missing. */
 const DEFAULT_MAX_TOKENS = 16384;
 const DEFAULT_MAX_RETRIES = 3;
+const DEFAULT_TEMPERATURE = 1;
 
 // ---------------- Getters (used by loop.ts on every turn) ----------------
 
@@ -73,6 +76,21 @@ export async function getEffectiveMaxTokens(): Promise<number> {
     // fall through
   }
   return DEFAULT_MAX_TOKENS;
+}
+
+/** Resolve the temperature for the next Anthropic call. */
+export async function getEffectiveTemperature(): Promise<number> {
+  const redis = getRedis();
+  try {
+    const override = await redis.get<number | string>(KEY_TEMPERATURE);
+    if (override !== null && override !== undefined) {
+      const n = Number(override);
+      if (Number.isFinite(n) && n >= 0 && n <= 1) return n;
+    }
+  } catch {
+    // fall through
+  }
+  return DEFAULT_TEMPERATURE;
 }
 
 /** Resolve the 429 retry cap. */
@@ -146,6 +164,18 @@ export async function setMaxTokens(maxTokens: number | null): Promise<void> {
   await redis.set(KEY_MAX_TOKENS, maxTokens);
 }
 
+export async function setTemperature(temperature: number | null): Promise<void> {
+  const redis = getRedis();
+  if (temperature === null) {
+    await redis.del(KEY_TEMPERATURE);
+    return;
+  }
+  if (!Number.isFinite(temperature) || temperature < 0 || temperature > 1) {
+    throw new Error('temperature must be between 0.0 and 1.0, or null');
+  }
+  await redis.set(KEY_TEMPERATURE, temperature);
+}
+
 export async function setMaxRetries(maxRetries: number | null): Promise<void> {
   const redis = getRedis();
   if (maxRetries === null) {
@@ -187,15 +217,17 @@ export async function setDisabledTools(tools: string[]): Promise<string[]> {
 export async function getAdminConfigSnapshot(): Promise<{
   model: { effective: string; hasOverride: boolean; envDefault: string | undefined };
   maxTokens: { effective: number; hasOverride: boolean; envDefault: number };
+  temperature: { effective: number; hasOverride: boolean; envDefault: number };
   maxRetries: { effective: number; hasOverride: boolean; envDefault: number };
   disabledTools: string[];
 }> {
   const redis = getRedis();
 
-  const [modelOverride, maxTokensOverride, maxRetriesOverride, disabledTools] =
+  const [modelOverride, maxTokensOverride, temperatureOverride, maxRetriesOverride, disabledTools] =
     await Promise.all([
       redis.get<string>(KEY_MODEL).catch(() => null),
       redis.get<number | string>(KEY_MAX_TOKENS).catch(() => null),
+      redis.get<number | string>(KEY_TEMPERATURE).catch(() => null),
       redis.get<number | string>(KEY_MAX_RETRIES).catch(() => null),
       getDisabledTools(),
     ]);
@@ -229,6 +261,11 @@ export async function getAdminConfigSnapshot(): Promise<{
       hasOverride: maxTokensOverride !== null && maxTokensOverride !== undefined,
       envDefault: DEFAULT_MAX_TOKENS,
     },
+    temperature: (() => {
+      const parsed = Number(temperatureOverride);
+      const effective = temperatureOverride != null && Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : DEFAULT_TEMPERATURE;
+      return { effective, hasOverride: temperatureOverride !== null && temperatureOverride !== undefined, envDefault: DEFAULT_TEMPERATURE };
+    })(),
     maxRetries: {
       effective: effectiveMaxRetries,
       hasOverride: maxRetriesOverride !== null && maxRetriesOverride !== undefined,
