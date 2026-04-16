@@ -24,6 +24,7 @@ import { ProgressFeed } from './agent-emitted/ProgressFeed';
 import { ReflectionCard } from './agent-emitted/ReflectionCard';
 import { CompletionCard } from './agent-emitted/CompletionCard';
 import { cn } from '@/lib/cn';
+import SettingsPanel from './SettingsPanel';
 
 /**
  * Chat — the main orchestrator component for the Plansync UI.
@@ -237,6 +238,7 @@ export function Chat() {
   const [memoryToasts, setMemoryToasts] = useState<Array<{ id: string; key: string }>>([]);
   const [inputValue, setInputValue] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   /**
    * Hydration state — tells the user what kind of session this is:
    *   - 'loading'    → initial mount, still fetching the event log
@@ -1145,6 +1147,28 @@ export function Chat() {
               </span>
             </div>
             <div className="flex items-center gap-3">
+              {/* Settings (BYOK) */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setSettingsOpen((v) => !v)}
+                  title="Settings — bring your own API key & model"
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all',
+                    'bg-surface-container-low/70 border border-outline-variant/40 text-on-surface-variant',
+                    'hover:border-primary/40 hover:text-primary hover:bg-primary/5',
+                    settingsOpen && 'border-primary/40 text-primary bg-primary/5'
+                  )}
+                >
+                  <span className="material-symbols-outlined text-sm">settings</span>
+                  <span className="hidden sm:inline">Settings</span>
+                </button>
+                <SettingsPanel
+                  sessionId={sessionId}
+                  isOpen={settingsOpen}
+                  onClose={() => setSettingsOpen(false)}
+                />
+              </div>
               <button
                 type="button"
                 onClick={handleNewSession}

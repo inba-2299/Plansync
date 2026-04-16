@@ -79,32 +79,39 @@ export async function runAgentLoop(
   session: Session,
   emit: (event: AgentEvent) => void
 ): Promise<RunAgentLoopResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  // BYOK: session-level Anthropic key takes precedence over env var.
+  // This lets users bring their own API key via the settings panel.
+  // The operator's env var key is the fallback (used for bootstrap turns
+  // before the user has set their own key, or when BYOK is not configured).
+  let apiKey: string | undefined;
+  if (session.meta.anthropicApiKeyEnc) {
+    try {
+      apiKey = decrypt(session.meta.anthropicApiKeyEnc);
+    } catch {
+      // Corrupted encrypted key — fall back to env var
+      console.error('[loop] Failed to decrypt session Anthropic key, falling back to env var');
+    }
+  }
+  if (!apiKey) apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     emit({
       type: 'error',
-      message: 'ANTHROPIC_API_KEY env var is not set on the agent backend.',
-      kind: 'generic',
+      message: 'No Anthropic API key available. Set your key in Settings or configure ANTHROPIC_API_KEY on the backend.',
+      kind: 'auth',
     });
     return { outcome: 'error', error: 'ANTHROPIC_API_KEY not set' };
   }
-
-  // Model is resolved PER TURN inside the loop via getEffectiveModel()
-  // (Redis override → env var → hardcoded). No boot-time check here —
-  // if neither Redis nor the env var has a model, the first turn will
-  // emit a clear error and the loop will return early.
 
   const anthropic = new Anthropic({ apiKey });
 
   while (session.meta.turnCount < MAX_TURNS) {
     session.meta.turnCount++;
 
-    // Resolve runtime config FRESH at the start of each turn so that admin
-    // changes made mid-run take effect on the next turn. Precedence:
-    // Redis override → env var → hardcoded default.
+    // Resolve runtime config FRESH at the start of each turn. Precedence:
+    // Session meta (BYOK) → Redis admin override → env var → error.
     let model: string;
     try {
-      model = await getEffectiveModel();
+      model = session.meta.anthropicModel || await getEffectiveModel();
     } catch (err) {
       emit({
         type: 'error',

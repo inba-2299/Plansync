@@ -402,6 +402,90 @@ app.post('/session/:id/apikey', async (req: Request, res: Response) => {
   }
 });
 
+// ---------- POST /session/:id/settings ----------
+//
+// BYOK: user-provided Anthropic API key + model preference.
+// Key is encrypted at rest using the same AES-GCM as the Rocketlane key.
+// Model is stored in plain text (not sensitive).
+
+app.post('/session/:id/settings', async (req: Request, res: Response) => {
+  try {
+    const sessionId = req.params.id;
+    if (!sessionId) {
+      res.status(400).json({ error: 'sessionId required' });
+      return;
+    }
+
+    const { anthropicApiKey, model } = req.body ?? {};
+    const session = await loadSession(sessionId);
+    let keyValid = false;
+
+    // If a key is provided, validate it with a lightweight API call
+    if (typeof anthropicApiKey === 'string' && anthropicApiKey.trim()) {
+      try {
+        const testClient = new (await import('@anthropic-ai/sdk')).default({
+          apiKey: anthropicApiKey.trim(),
+        });
+        // Lightweight validation — send a minimal message to verify the key works
+        await testClient.messages.create({
+          model: 'claude-haiku-4-5',
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'ping' }],
+        });
+        session.meta.anthropicApiKeyEnc = encrypt(anthropicApiKey.trim());
+        keyValid = true;
+      } catch (keyErr) {
+        res.status(400).json({
+          error: 'Invalid Anthropic API key',
+          detail: keyErr instanceof Error ? keyErr.message : String(keyErr),
+        });
+        return;
+      }
+    }
+
+    // Model preference (no validation — just store)
+    const validModels = ['claude-haiku-4-5', 'claude-sonnet-4-5', 'claude-opus-4-5'];
+    if (typeof model === 'string' && validModels.includes(model)) {
+      session.meta.anthropicModel = model;
+    } else if (model === null || model === '') {
+      // Clear model override — revert to admin/env config
+      session.meta.anthropicModel = undefined;
+    }
+
+    await saveSession(sessionId, session);
+    res.json({
+      ok: true,
+      keySet: keyValid || !!session.meta.anthropicApiKeyEnc,
+      model: session.meta.anthropicModel ?? null,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+// ---------- GET /session/:id/settings ----------
+//
+// Read current BYOK settings (without exposing the actual key).
+
+app.get('/session/:id/settings', async (req: Request, res: Response) => {
+  try {
+    const sessionId = req.params.id;
+    if (!sessionId) {
+      res.status(400).json({ error: 'sessionId required' });
+      return;
+    }
+    const session = await loadSession(sessionId);
+    res.json({
+      hasAnthropicKey: !!session.meta.anthropicApiKeyEnc,
+      model: session.meta.anthropicModel ?? null,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
 // ---------- GET /session/:id/journey ----------
 //
 // Journey stepper hydration for reconnect. The frontend calls this on

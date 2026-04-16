@@ -119,6 +119,10 @@ export interface SessionMeta {
   rlWorkspaceId?: number;
   /** Real Rocketlane project ID after create_rocketlane_project succeeds */
   rlProjectId?: number;
+  /** AES-GCM encrypted user-provided Anthropic API key (BYOK). If set, used instead of ANTHROPIC_API_KEY env var. */
+  anthropicApiKeyEnc?: string;
+  /** User-selected model override. Highest precedence in the model resolution chain. */
+  anthropicModel?: string;
 }
 
 export interface ExecLogEntry {

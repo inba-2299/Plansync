@@ -244,6 +244,8 @@ function parseMeta(raw: Record<string, unknown>): SessionMeta {
       raw.rlProjectId !== undefined && raw.rlProjectId !== null
         ? Number(raw.rlProjectId)
         : undefined,
+    anthropicApiKeyEnc: raw.anthropicApiKeyEnc ? String(raw.anthropicApiKeyEnc) : undefined,
+    anthropicModel: raw.anthropicModel ? String(raw.anthropicModel) : undefined,
   };
 }
 
@@ -257,6 +259,8 @@ function flattenMeta(meta: SessionMeta): Record<string, string | number> {
   if (meta.rlApiKeyEnc) out.rlApiKeyEnc = meta.rlApiKeyEnc;
   if (meta.rlWorkspaceId !== undefined) out.rlWorkspaceId = meta.rlWorkspaceId;
   if (meta.rlProjectId !== undefined) out.rlProjectId = meta.rlProjectId;
+  if (meta.anthropicApiKeyEnc) out.anthropicApiKeyEnc = meta.anthropicApiKeyEnc;
+  if (meta.anthropicModel) out.anthropicModel = meta.anthropicModel;
   return out;
 }
 
