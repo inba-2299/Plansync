@@ -199,15 +199,15 @@ const AUTONOMY = {
 /* ================================================================== */
 /*  PAGE COMPONENT                                                     */
 /* ================================================================== */
-const FONT_SIZES = [
-  { label: 'A', value: 14, title: 'Default' },
-  { label: 'A', value: 16, title: 'Medium' },
-  { label: 'A', value: 18, title: 'Large' },
+const ZOOM_LEVELS = [
+  { label: 'A', zoom: 1, title: 'Default' },
+  { label: 'A', zoom: 1.1, title: 'Medium' },
+  { label: 'A', zoom: 1.2, title: 'Large' },
 ];
 
 export default function RLAssignmentPage() {
   const [activeSection, setActiveSection] = useState('objective');
-  const [fontSize, setFontSize] = useState(14);
+  const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -229,7 +229,7 @@ export default function RLAssignmentPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-surface font-body text-on-surface transition-[font-size] duration-200" style={{ fontSize: `${fontSize}px` }}>
+    <div className="min-h-screen bg-surface font-body text-on-surface" style={{ zoom }}>
       {/* ── Sticky nav ── */}
       <nav className="sticky top-0 z-50 bg-surface-container-lowest/80 backdrop-blur-lg border-b border-outline-variant/30">
         <div className="max-w-[1440px] mx-auto px-6 lg:px-10 flex items-center h-14 gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
@@ -252,19 +252,19 @@ export default function RLAssignmentPage() {
             </a>
           ))}
 
-          {/* Font size control */}
+          {/* Zoom control */}
           <div className="ml-auto shrink-0 flex items-center gap-0.5 bg-surface-container rounded-full p-0.5">
-            {FONT_SIZES.map((s) => (
+            {ZOOM_LEVELS.map((s) => (
               <button
-                key={s.value}
-                onClick={() => setFontSize(s.value)}
+                key={s.zoom}
+                onClick={() => setZoom(s.zoom)}
                 title={s.title}
                 className={`rounded-full w-7 h-7 flex items-center justify-center transition-colors ${
-                  fontSize === s.value
+                  zoom === s.zoom
                     ? 'bg-primary text-on-primary'
                     : 'text-on-surface-variant hover:bg-surface-container-high'
                 }`}
-                style={{ fontSize: s.value === 14 ? 11 : s.value === 16 ? 13 : 15 }}
+                style={{ fontSize: s.zoom === 1 ? 11 : s.zoom === 1.1 ? 13 : 15 }}
               >
                 <span className="font-semibold">{s.label}</span>
               </button>
