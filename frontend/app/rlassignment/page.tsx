@@ -791,9 +791,9 @@ export default function RLAssignmentPage() {
           <SectionHeading id="team" label="How We Built This" sub="Inba + Claude" />
 
           <p className="text-sm text-on-surface-variant mb-6 max-w-3xl leading-relaxed">
-            I used Claude the same way an implementation lead collaborates with a senior engineer &mdash;
-            I set direction, Claude executed, I verified. Every architectural decision was mine;
-            Claude was the tool that helped me build faster.
+            I led the architecture and every key decision &mdash; what to build, how to design it, when to reverse course.
+            Claude was my build partner: I set the direction, we collaborated on execution, and I verified every outcome.
+            The work is mine; Claude helped me move faster.
           </p>
 
           {/* Column headers */}
