@@ -496,6 +496,12 @@ export default function RLAssignmentPage() {
         <div className="max-w-[1440px] mx-auto px-6 lg:px-10">
           <SectionHeading id="design" label="Agent Design" sub="How it thinks" />
 
+          <Link href="/rlassignment/how-it-works" className="inline-flex items-center gap-2 mb-6 px-4 py-2 rounded-xl bg-tertiary/10 border border-tertiary/20 text-tertiary text-xs font-semibold hover:bg-tertiary/15 transition-colors">
+            <Icon name="play_circle" className="text-base" />
+            Interactive deep dive — step through how the agent works
+            <Icon name="arrow_forward" className="text-sm" />
+          </Link>
+
           {/* Pipeline */}
           <Card className="mb-6">
             <h3 className="font-headline font-bold text-sm mb-4 text-on-surface">The ReAct Loop</h3>
