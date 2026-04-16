@@ -101,7 +101,7 @@ const SCOPE_CARDS = [
   },
   {
     icon: 'extension',
-    title: 'Custom App',
+    title: 'Custom App within Rocketlane',
     badge: 'Shipped',
     items: [
       '199 KB zip built via @rocketlane/rli CLI',
@@ -224,7 +224,7 @@ export default function RLAssignmentPage() {
     <div className="min-h-screen bg-surface font-body text-on-surface">
       {/* ── Sticky nav ── */}
       <nav className="sticky top-0 z-50 bg-surface-container-lowest/80 backdrop-blur-lg border-b border-outline-variant/30">
-        <div className="max-w-6xl mx-auto px-4 flex items-center h-14 gap-1 overflow-x-auto scrollbar-hide">
+        <div className="max-w-6xl mx-auto px-4 flex items-center h-14 gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
           <Link href="/" className="flex items-center gap-1.5 mr-4 shrink-0">
             <Icon name="bolt" className="text-tertiary text-xl" />
             <span className="font-headline font-extrabold text-sm text-on-surface">Plansync</span>
@@ -257,7 +257,7 @@ export default function RLAssignmentPage() {
           <p className="text-lg md:text-xl text-on-surface-variant mt-3 max-w-2xl leading-relaxed">
             An AI agent that reads a project plan file and creates it as a fully structured
             project in Rocketlane &mdash; phases, tasks, subtasks, milestones, and dependencies.
-            <span className="text-on-surface font-medium"> No manual recreation. No CSV import wizards. Just an agent that does the work.</span>
+            <span className="text-on-surface font-medium"> No manual recreation. No row-by-row rebuilding. Just upload and let the agent do the work.</span>
           </p>
 
           {/* Key metrics */}
@@ -434,9 +434,9 @@ export default function RLAssignmentPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Web app */}
-            <Card>
+            <Card className="flex flex-col">
               <div className="flex items-center gap-3 mb-5">
-                <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center">
+                <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                   <Icon name="language" className="text-primary text-2xl" />
                 </div>
                 <div>
@@ -445,7 +445,7 @@ export default function RLAssignmentPage() {
                 </div>
               </div>
 
-              <ol className="space-y-3 mb-6">
+              <ol className="space-y-3 flex-1">
                 {[
                   { step: 'Connect', desc: 'Paste your Rocketlane API key' },
                   { step: 'Upload', desc: 'Drop a CSV or Excel project plan file' },
@@ -462,25 +462,27 @@ export default function RLAssignmentPage() {
                 ))}
               </ol>
 
-              <a href="https://plansync-tau.vercel.app" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-primary text-on-primary font-semibold text-sm px-5 py-2.5 rounded-xl hover:bg-primary-container transition-colors w-full justify-center">
-                <Icon name="open_in_new" className="text-lg" /> Open Plansync
-              </a>
-              <p className="text-[10px] text-on-surface-variant text-center mt-2">plansync-tau.vercel.app</p>
+              <div className="mt-6">
+                <a href="https://plansync-tau.vercel.app" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-primary text-on-primary font-semibold text-sm px-5 py-2.5 rounded-xl hover:bg-primary-container transition-colors w-full justify-center">
+                  <Icon name="open_in_new" className="text-lg" /> Open Plansync
+                </a>
+                <p className="text-[10px] text-on-surface-variant text-center mt-2">plansync-tau.vercel.app</p>
+              </div>
             </Card>
 
             {/* Custom App */}
-            <Card>
+            <Card className="flex flex-col">
               <div className="flex items-center gap-3 mb-5">
-                <div className="w-11 h-11 rounded-xl bg-tertiary/10 flex items-center justify-center">
+                <div className="w-11 h-11 rounded-xl bg-tertiary/10 flex items-center justify-center shrink-0">
                   <Icon name="extension" className="text-tertiary text-2xl" />
                 </div>
                 <div>
-                  <h3 className="font-headline font-bold text-base text-on-surface">Rocketlane Custom App</h3>
-                  <p className="text-[11px] text-on-surface-variant">Runs inside your Rocketlane workspace</p>
+                  <h3 className="font-headline font-bold text-base text-on-surface">Custom App within Rocketlane</h3>
+                  <p className="text-[11px] text-on-surface-variant">Runs natively inside your Rocketlane workspace</p>
                 </div>
               </div>
 
-              <ol className="space-y-3 mb-6">
+              <ol className="space-y-3 flex-1">
                 {[
                   { step: 'Download', desc: 'Get plansync-custom-app.zip (199 KB) from the repo' },
                   { step: 'Install', desc: 'Settings \u2192 Custom Apps \u2192 Upload the zip file' },
@@ -496,10 +498,12 @@ export default function RLAssignmentPage() {
                 ))}
               </ol>
 
-              <a href="https://github.com/inba-2299/Plansync/raw/main/custom-app/plansync-custom-app.zip" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-tertiary text-on-tertiary font-semibold text-sm px-5 py-2.5 rounded-xl hover:bg-tertiary-container transition-colors w-full justify-center">
-                <Icon name="download" className="text-lg" /> Download Custom App
-              </a>
-              <p className="text-[10px] text-on-surface-variant text-center mt-2">plansync-custom-app.zip &middot; 199 KB</p>
+              <div className="mt-6">
+                <a href="https://github.com/inba-2299/Plansync/raw/main/custom-app/plansync-custom-app.zip" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-tertiary text-on-tertiary font-semibold text-sm px-5 py-2.5 rounded-xl hover:bg-tertiary-container transition-colors w-full justify-center">
+                  <Icon name="download" className="text-lg" /> Download Custom App
+                </a>
+                <p className="text-[10px] text-on-surface-variant text-center mt-2">plansync-custom-app.zip &middot; 199 KB</p>
+              </div>
             </Card>
           </div>
 
