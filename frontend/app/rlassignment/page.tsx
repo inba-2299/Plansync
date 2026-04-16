@@ -501,19 +501,32 @@ export default function RLAssignmentPage() {
             <h3 className="font-headline font-bold text-sm mb-4 text-on-surface">The ReAct Loop</h3>
             <div className="flex flex-wrap items-center gap-2 text-xs font-medium">
               {[
-                { icon: 'article', label: 'System Prompt', sub: 'PM knowledge + API reference + rules' },
+                { icon: 'article', label: 'System Prompt', sub: 'PM knowledge + API reference + rules', link: '/rlassignment/prompt' },
                 { icon: 'sync', label: 'ReAct Loop', sub: 'Reason \u2192 Act \u2192 Observe \u2192 Repeat' },
                 { icon: 'build', label: '22 Tools', sub: '7 groups by function' },
                 { icon: 'cloud', label: 'Rocketlane API', sub: 'Direct REST calls' },
-              ].map((step, i) => (
+              ].map((step: { icon: string; label: string; sub: string; link?: string }, i) => (
                 <div key={step.label} className="flex items-center gap-2">
-                  <div className="bg-surface-container rounded-xl px-4 py-3 flex items-center gap-2.5 min-w-[140px]">
-                    <Icon name={step.icon} className="text-primary text-lg" />
-                    <div>
-                      <div className="text-on-surface font-semibold">{step.label}</div>
-                      <div className="text-[10px] text-on-surface-variant font-normal">{step.sub}</div>
+                  {step.link ? (
+                    <Link href={step.link} className="bg-surface-container rounded-xl px-4 py-3 flex items-center gap-2.5 min-w-[140px] hover:bg-primary/10 hover:border-primary/30 border border-transparent transition-colors group">
+                      <Icon name={step.icon} className="text-primary text-lg" />
+                      <div>
+                        <div className="text-on-surface font-semibold group-hover:text-primary flex items-center gap-1">
+                          {step.label}
+                          <Icon name="open_in_new" className="text-[10px] opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                        <div className="text-[10px] text-on-surface-variant font-normal">{step.sub}</div>
+                      </div>
+                    </Link>
+                  ) : (
+                    <div className="bg-surface-container rounded-xl px-4 py-3 flex items-center gap-2.5 min-w-[140px]">
+                      <Icon name={step.icon} className="text-primary text-lg" />
+                      <div>
+                        <div className="text-on-surface font-semibold">{step.label}</div>
+                        <div className="text-[10px] text-on-surface-variant font-normal">{step.sub}</div>
+                      </div>
                     </div>
-                  </div>
+                  )}
                   {i < 3 && <Icon name="arrow_forward" className="text-outline text-base shrink-0 hidden sm:block" />}
                 </div>
               ))}
