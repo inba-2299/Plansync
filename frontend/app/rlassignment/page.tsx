@@ -277,9 +277,9 @@ export default function RLAssignmentPage() {
       <section id="objective" className="scroll-mt-20 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.03] via-transparent to-tertiary/[0.04]" />
         <div className="relative max-w-[1440px] mx-auto px-6 lg:px-10 pt-14 pb-10 md:pt-20 md:pb-16">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
-            {/* Left — text */}
-            <div>
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-10 lg:gap-16 items-center">
+            {/* Left — text (shifted right for natural reading position) */}
+            <div className="lg:pl-[8%] xl:pl-[12%]">
               <Badge color="tertiary">Rocketlane Implementation Manager Assignment</Badge>
               <h1 className="font-headline text-4xl md:text-5xl lg:text-[3.5rem] font-extrabold mt-4 leading-[1.1]">
                 Plansync
