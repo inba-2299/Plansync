@@ -291,12 +291,19 @@ function PromptSectionCard({ section, defaultOpen }: { section: PromptSection; d
 /* ------------------------------------------------------------------ */
 /*  Page                                                               */
 /* ------------------------------------------------------------------ */
+const ZOOM_LEVELS = [
+  { label: 'A', zoom: 1, title: 'Default' },
+  { label: 'A', zoom: 1.1, title: 'Medium' },
+  { label: 'A', zoom: 1.2, title: 'Large' },
+];
+
 export default function PromptPage() {
   const [expandAll, setExpandAll] = useState(false);
   const [key, setKey] = useState(0); // force re-render on toggle
+  const [zoom, setZoom] = useState(1);
 
   return (
-    <div className="min-h-screen bg-surface font-body text-on-surface">
+    <div className="min-h-screen bg-surface font-body text-on-surface" style={{ zoom }}>
       {/* Nav */}
       <nav className="sticky top-0 z-50 bg-surface-container-lowest/80 backdrop-blur-lg border-b border-outline-variant/30">
         <div className="max-w-[1440px] mx-auto px-6 lg:px-10 flex items-center h-14 gap-3">
@@ -306,13 +313,30 @@ export default function PromptPage() {
           </Link>
           <div className="h-5 w-px bg-outline-variant/40" />
           <span className="font-headline font-bold text-sm">System Prompt</span>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-3">
             <button
               onClick={() => { setExpandAll((v) => !v); setKey((k) => k + 1); }}
               className="text-xs font-medium text-primary hover:underline"
             >
               {expandAll ? 'Collapse all' : 'Expand all'}
             </button>
+            <div className="flex items-center gap-0.5 bg-surface-container rounded-full p-0.5">
+              {ZOOM_LEVELS.map((s) => (
+                <button
+                  key={s.zoom}
+                  onClick={() => setZoom(s.zoom)}
+                  title={s.title}
+                  className={`rounded-full w-7 h-7 flex items-center justify-center transition-colors ${
+                    zoom === s.zoom
+                      ? 'bg-primary text-on-primary'
+                      : 'text-on-surface-variant hover:bg-surface-container-high'
+                  }`}
+                  style={{ fontSize: s.zoom === 1 ? 11 : s.zoom === 1.1 ? 13 : 15 }}
+                >
+                  <span className="font-semibold">{s.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </nav>
