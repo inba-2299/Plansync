@@ -670,28 +670,30 @@ export default function RLAssignmentPage() {
         <div className="max-w-[1440px] mx-auto px-6 lg:px-10">
           <SectionHeading id="stack" label="Tech Stack" sub="What powers it" />
 
-          <Card>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="border-b border-outline-variant/30">
-                    <th className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant pb-3 pr-4">Layer</th>
-                    <th className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant pb-3 pr-4">Choice</th>
-                    <th className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant pb-3">Why</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {TECH_STACK.map((row) => (
-                    <tr key={row.layer} className="border-b border-outline-variant/15 last:border-b-0">
-                      <td className="py-3 pr-4 text-sm font-semibold text-on-surface whitespace-nowrap">{row.layer}</td>
-                      <td className="py-3 pr-4 text-xs text-on-surface font-mono">{row.choice}</td>
-                      <td className="py-3 text-xs text-on-surface-variant">{row.why}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+          {/* Header row */}
+          <div className="grid grid-cols-[140px_1fr_1fr] md:grid-cols-[160px_1fr_1.5fr] gap-px bg-outline-variant/20 rounded-2xl overflow-hidden shadow-card">
+            <div className="bg-primary/[0.07] px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-primary">Layer</div>
+            <div className="bg-primary/[0.07] px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-primary">Choice</div>
+            <div className="bg-primary/[0.07] px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-primary">Why</div>
+
+            {/* Data rows with alternating backgrounds */}
+            {TECH_STACK.map((row, i) => (
+              <>
+                <div key={`${row.layer}-l`} className={`px-4 py-3.5 flex items-center ${i % 2 === 0 ? 'bg-surface-container-lowest' : 'bg-surface-container-low'}`}>
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-on-surface">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                    {row.layer}
+                  </span>
+                </div>
+                <div key={`${row.layer}-c`} className={`px-4 py-3.5 flex items-center ${i % 2 === 0 ? 'bg-surface-container-lowest' : 'bg-surface-container-low'}`}>
+                  <span className="text-xs text-on-surface font-mono">{row.choice}</span>
+                </div>
+                <div key={`${row.layer}-w`} className={`px-4 py-3.5 flex items-center ${i % 2 === 0 ? 'bg-surface-container-lowest' : 'bg-surface-container-low'}`}>
+                  <span className="text-xs text-on-surface-variant leading-snug">{row.why}</span>
+                </div>
+              </>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -700,42 +702,57 @@ export default function RLAssignmentPage() {
         <div className="max-w-[1440px] mx-auto px-6 lg:px-10">
           <SectionHeading id="team" label="How We Built This" sub="Inba + Claude" />
 
-          <p className="text-sm text-on-surface-variant mb-6 max-w-2xl leading-relaxed">
+          <p className="text-sm text-on-surface-variant mb-6 max-w-3xl leading-relaxed">
             I used Claude the same way an implementation lead uses a senior engineer &mdash;
             I set direction, Claude executed, I verified. Every architectural decision was mine;
             Claude was the tool that helped me build faster.
           </p>
 
-          <Card>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="border-b border-outline-variant/30">
-                    <th className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant pb-3 pr-4 w-[20%]">Area</th>
-                    <th className="text-[11px] font-semibold uppercase tracking-wider pb-3 pr-4 w-[40%]">
-                      <span className="flex items-center gap-1.5 text-primary">
-                        <Icon name="person" className="text-sm" /> Inbaraj &mdash; Implementation Lead
-                      </span>
-                    </th>
-                    <th className="text-[11px] font-semibold uppercase tracking-wider pb-3 w-[40%]">
-                      <span className="flex items-center gap-1.5 text-tertiary">
-                        <Icon name="smart_toy" className="text-sm" /> Claude &mdash; AI Assistant
-                      </span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {TEAM_ROWS.map((row) => (
-                    <tr key={row.area} className="border-b border-outline-variant/15 last:border-b-0 align-top">
-                      <td className="py-3 pr-4 text-xs font-semibold text-on-surface">{row.area}</td>
-                      <td className="py-3 pr-4 text-[11px] text-on-surface leading-snug">{row.inba}</td>
-                      <td className="py-3 text-[11px] text-on-surface-variant leading-snug">{row.claude}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {/* Column headers */}
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr] gap-4 mb-3 pl-0 md:pl-[180px] lg:pl-[200px]">
+            <div className="hidden md:flex items-center gap-2 px-4">
+              <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
+                <Icon name="person" className="text-primary text-sm" />
+              </div>
+              <span className="text-xs font-bold uppercase tracking-wider text-primary">Inbaraj &mdash; Implementation Lead</span>
             </div>
-          </Card>
+            <div className="hidden md:flex items-center gap-2 px-4">
+              <div className="w-7 h-7 rounded-full bg-tertiary/10 flex items-center justify-center">
+                <Icon name="smart_toy" className="text-tertiary text-sm" />
+              </div>
+              <span className="text-xs font-bold uppercase tracking-wider text-tertiary">Claude &mdash; AI Assistant</span>
+            </div>
+          </div>
+
+          {/* Rows as cards */}
+          <div className="space-y-3">
+            {TEAM_ROWS.map((row) => (
+              <div key={row.area} className="grid grid-cols-1 md:grid-cols-[180px_1fr_1fr] lg:grid-cols-[200px_1fr_1fr] gap-px bg-outline-variant/20 rounded-xl overflow-hidden shadow-card-sm">
+                {/* Area label */}
+                <div className="bg-surface-container px-4 py-4 flex items-center">
+                  <span className="text-xs font-bold text-on-surface">{row.area}</span>
+                </div>
+
+                {/* Inba column — primary tint */}
+                <div className="bg-primary/[0.03] px-4 py-4 border-l-2 border-primary/20">
+                  <div className="flex items-center gap-1.5 mb-1.5 md:hidden">
+                    <Icon name="person" className="text-primary text-xs" />
+                    <span className="text-[10px] font-bold text-primary uppercase">Inbaraj</span>
+                  </div>
+                  <p className="text-xs text-on-surface leading-relaxed">{row.inba}</p>
+                </div>
+
+                {/* Claude column — tertiary tint */}
+                <div className="bg-tertiary/[0.03] px-4 py-4 border-l-2 border-tertiary/20">
+                  <div className="flex items-center gap-1.5 mb-1.5 md:hidden">
+                    <Icon name="smart_toy" className="text-tertiary text-xs" />
+                    <span className="text-[10px] font-bold text-tertiary uppercase">Claude</span>
+                  </div>
+                  <p className="text-xs text-on-surface-variant leading-relaxed">{row.claude}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
