@@ -134,7 +134,7 @@ export default function ScopePage() {
     <div className="min-h-screen bg-surface font-body text-on-surface">
       {/* Nav */}
       <nav className="sticky top-0 z-50 bg-surface-container-lowest/80 backdrop-blur-lg border-b border-outline-variant/30">
-        <div className="max-w-5xl mx-auto px-4 flex items-center h-14 gap-3">
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 flex items-center h-14 gap-3">
           <Link href="/rlassignment" className="flex items-center gap-1.5 text-on-surface-variant hover:text-on-surface transition-colors">
             <Icon name="arrow_back" className="text-lg" />
             <span className="text-xs font-medium">Back to Overview</span>
@@ -145,7 +145,7 @@ export default function ScopePage() {
       </nav>
 
       {/* Header */}
-      <header className="max-w-5xl mx-auto px-4 pt-12 pb-8">
+      <header className="max-w-[1440px] mx-auto px-6 lg:px-10 pt-8 pb-6">
         <p className="text-xs font-semibold uppercase tracking-widest text-tertiary mb-1.5">Detailed Breakdown</p>
         <h1 className="font-headline text-3xl md:text-4xl font-extrabold">What was built, what was descoped, and what comes next</h1>
         <p className="text-sm text-on-surface-variant mt-3 max-w-2xl leading-relaxed">
@@ -155,7 +155,7 @@ export default function ScopePage() {
       </header>
 
       {/* ── SHIPPED ── */}
-      <section className="max-w-5xl mx-auto px-4 pb-16">
+      <section className="max-w-[1440px] mx-auto px-6 lg:px-10 pb-16">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
             <Icon name="check_circle" className="text-emerald-600 text-lg" />
@@ -185,8 +185,8 @@ export default function ScopePage() {
       </section>
 
       {/* ── DESCOPED ── */}
-      <section className="bg-surface-container-low/50 py-16">
-        <div className="max-w-5xl mx-auto px-4">
+      <section className="bg-surface-container-low/50 py-10">
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-10">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
               <Icon name="schedule" className="text-amber-600 text-lg" />
@@ -219,8 +219,8 @@ export default function ScopePage() {
       </section>
 
       {/* ── ROADMAP ── */}
-      <section className="py-16">
-        <div className="max-w-5xl mx-auto px-4">
+      <section className="py-10">
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-10">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
               <Icon name="rocket_launch" className="text-blue-600 text-lg" />
@@ -251,7 +251,7 @@ export default function ScopePage() {
 
       {/* Footer */}
       <footer className="border-t border-outline-variant/30 py-8">
-        <div className="max-w-5xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 flex flex-col md:flex-row items-center justify-between gap-4">
           <Link href="/rlassignment" className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary-container transition-colors">
             <Icon name="arrow_back" className="text-lg" /> Back to Overview
           </Link>

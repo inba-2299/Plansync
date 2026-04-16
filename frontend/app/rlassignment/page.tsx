@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 
 /* ------------------------------------------------------------------ */
 /*  Section nav items                                                  */
@@ -224,7 +225,7 @@ export default function RLAssignmentPage() {
     <div className="min-h-screen bg-surface font-body text-on-surface">
       {/* ── Sticky nav ── */}
       <nav className="sticky top-0 z-50 bg-surface-container-lowest/80 backdrop-blur-lg border-b border-outline-variant/30">
-        <div className="max-w-6xl mx-auto px-4 flex items-center h-14 gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 flex items-center h-14 gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
           <Link href="/" className="flex items-center gap-1.5 mr-4 shrink-0">
             <Icon name="bolt" className="text-tertiary text-xl" />
             <span className="font-headline font-extrabold text-sm text-on-surface">Plansync</span>
@@ -249,46 +250,164 @@ export default function RLAssignmentPage() {
       {/* ── Hero / Objective ── */}
       <section id="objective" className="scroll-mt-20 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.03] via-transparent to-tertiary/[0.04]" />
-        <div className="relative max-w-6xl mx-auto px-4 pt-20 pb-16 md:pt-28 md:pb-24">
-          <Badge color="tertiary">Rocketlane Implementation Manager Assignment</Badge>
-          <h1 className="font-headline text-4xl md:text-5xl lg:text-6xl font-extrabold mt-4 leading-tight">
-            Plansync
-          </h1>
-          <p className="text-lg md:text-xl text-on-surface-variant mt-3 max-w-2xl leading-relaxed">
-            An AI agent that reads a project plan file and creates it as a fully structured
-            project in Rocketlane &mdash; phases, tasks, subtasks, milestones, and dependencies.
-            <span className="text-on-surface font-medium"> No manual recreation. No row-by-row rebuilding. Just upload and let the agent do the work.</span>
-          </p>
+        <div className="relative max-w-[1440px] mx-auto px-6 lg:px-10 pt-14 pb-10 md:pt-20 md:pb-16">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+            {/* Left — text */}
+            <div>
+              <Badge color="tertiary">Rocketlane Implementation Manager Assignment</Badge>
+              <h1 className="font-headline text-4xl md:text-5xl lg:text-[3.5rem] font-extrabold mt-4 leading-[1.1]">
+                Plansync
+              </h1>
+              <p className="text-base md:text-lg text-on-surface-variant mt-3 leading-relaxed">
+                An AI agent that reads a project plan file and creates it as a fully structured
+                project in Rocketlane &mdash; phases, tasks, subtasks, milestones, and dependencies.
+                <span className="text-on-surface font-medium"> No manual recreation. No row-by-row rebuilding. Just upload and let the agent do the work.</span>
+              </p>
 
-          {/* Key metrics */}
-          <div className="flex flex-wrap gap-4 mt-8">
-            {[
-              { value: '22', label: 'Agent Tools' },
-              { value: '3.5s', label: 'Execution Time' },
-              { value: '$0.86', label: 'Per Run (Sonnet)' },
-              { value: '0', label: 'Manual Steps' },
-            ].map((m) => (
-              <div key={m.label} className="bg-surface-container-lowest rounded-xl shadow-card-sm border border-outline-variant/20 px-5 py-3">
-                <div className="font-headline text-2xl font-extrabold text-primary">{m.value}</div>
-                <div className="text-[11px] text-on-surface-variant font-medium">{m.label}</div>
+              {/* Key metrics */}
+              <div className="flex flex-wrap gap-3 mt-6">
+                {[
+                  { value: '22', label: 'Agent Tools' },
+                  { value: '3.5s', label: 'Execution Time' },
+                  { value: '$0.86', label: 'Per Run (Sonnet)' },
+                  { value: '0', label: 'Manual Steps' },
+                ].map((m) => (
+                  <div key={m.label} className="bg-surface-container-lowest rounded-xl shadow-card-sm border border-outline-variant/20 px-4 py-2.5">
+                    <div className="font-headline text-xl font-extrabold text-primary">{m.value}</div>
+                    <div className="text-[10px] text-on-surface-variant font-medium">{m.label}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          <div className="flex flex-wrap gap-3 mt-8">
-            <a href="https://plansync-tau.vercel.app" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-primary text-on-primary font-semibold text-sm px-5 py-2.5 rounded-xl hover:bg-primary-container transition-colors">
-              <Icon name="open_in_new" className="text-lg" /> Try the Agent
-            </a>
-            <a href="https://github.com/inba-2299/Plansync" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-surface-container text-on-surface font-semibold text-sm px-5 py-2.5 rounded-xl hover:bg-surface-container-high transition-colors border border-outline-variant/30">
-              <Icon name="code" className="text-lg" /> Source Code
-            </a>
+              <div className="flex flex-wrap gap-3 mt-6">
+                <a href="https://plansync-tau.vercel.app" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-primary text-on-primary font-semibold text-sm px-5 py-2.5 rounded-xl hover:bg-primary-container transition-colors">
+                  <Icon name="open_in_new" className="text-lg" /> Try the Agent
+                </a>
+                <a href="https://github.com/inba-2299/Plansync" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-surface-container text-on-surface font-semibold text-sm px-5 py-2.5 rounded-xl hover:bg-surface-container-high transition-colors border border-outline-variant/30">
+                  <Icon name="code" className="text-lg" /> Source Code
+                </a>
+              </div>
+            </div>
+
+            {/* Right — animated agent flow */}
+            <div className="hidden lg:flex items-center justify-center">
+              <div className="relative w-full max-w-md">
+                {/* Background glow */}
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-tertiary/10 to-secondary/10 rounded-3xl blur-3xl" />
+
+                <div className="relative flex flex-col items-center gap-3">
+                  {/* Step 1: Upload */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.2 }}
+                    className="bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/30 px-5 py-3 flex items-center gap-3 w-64"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <Icon name="upload_file" className="text-primary text-lg" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-on-surface">Upload Plan</div>
+                      <div className="text-[10px] text-on-surface-variant">CSV or Excel file</div>
+                    </div>
+                  </motion.div>
+
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 0.4 }} transition={{ delay: 0.5 }}>
+                    <Icon name="arrow_downward" className="text-outline text-sm" />
+                  </motion.div>
+
+                  {/* Step 2: Agent Brain */}
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.6, delay: 0.6 }}
+                    className="relative"
+                  >
+                    <div className="bg-gradient-to-br from-primary to-tertiary rounded-2xl shadow-card-lg p-5 w-72">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                          <Icon name="psychology" className="text-white text-lg" />
+                        </div>
+                        <div className="text-sm font-bold text-white">Agent Brain</div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {['Analyze', 'Validate', 'Plan', 'Execute'].map((label, i) => (
+                          <motion.div
+                            key={label}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.9 + i * 0.15 }}
+                            className="bg-white/15 rounded-lg px-2.5 py-1.5 text-[10px] font-medium text-white/90 text-center"
+                          >
+                            {label}
+                          </motion.div>
+                        ))}
+                      </div>
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 1.6 }}
+                        className="flex items-center gap-1.5 mt-3 text-[10px] text-white/70"
+                      >
+                        <Icon name="build" className="text-xs" />
+                        22 tools &middot; ReAct loop &middot; Self-correcting
+                      </motion.div>
+                    </div>
+                    {/* Pulse ring */}
+                    <motion.div
+                      className="absolute -inset-1 rounded-2xl border border-tertiary/30"
+                      animate={{ scale: [1, 1.03, 1], opacity: [0.3, 0.6, 0.3] }}
+                      transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                    />
+                  </motion.div>
+
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 0.4 }} transition={{ delay: 1.4 }}>
+                    <Icon name="arrow_downward" className="text-outline text-sm" />
+                  </motion.div>
+
+                  {/* Step 3: Rocketlane Project */}
+                  <motion.div
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 1.6 }}
+                    className="bg-surface-container-lowest rounded-xl shadow-card border border-success/30 px-5 py-3 w-64"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-success/10 flex items-center justify-center shrink-0">
+                        <Icon name="check_circle" className="text-success text-lg" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold text-on-surface">Rocketlane Project</div>
+                        <div className="text-[10px] text-on-surface-variant">Phases, tasks, milestones, deps</div>
+                      </div>
+                    </div>
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: '100%' }}
+                      transition={{ delay: 2.0, duration: 0.8, ease: 'easeOut' }}
+                      className="h-0.5 bg-gradient-to-r from-success/50 to-success/0 rounded-full mt-2"
+                    />
+                  </motion.div>
+
+                  {/* Execution time badge */}
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 2.5, duration: 0.4 }}
+                    className="bg-surface-container rounded-full px-3 py-1 text-[10px] font-semibold text-tertiary border border-tertiary/20"
+                  >
+                    Completed in 3.5 seconds
+                  </motion.div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* ── Implementation Scope ── */}
-      <section className="py-16 md:py-20 bg-surface-container-low/50">
-        <div className="max-w-6xl mx-auto px-4">
+      <section className="py-10 md:py-14 bg-surface-container-low/50">
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-10">
           <SectionHeading id="scope" label="Implementation Scope" sub="What shipped" />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -347,8 +466,8 @@ export default function RLAssignmentPage() {
       </section>
 
       {/* ── Agent Design ── */}
-      <section className="py-16 md:py-20">
-        <div className="max-w-6xl mx-auto px-4">
+      <section className="py-10 md:py-14">
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-10">
           <SectionHeading id="design" label="Agent Design" sub="How it thinks" />
 
           {/* Pipeline */}
@@ -428,8 +547,8 @@ export default function RLAssignmentPage() {
       </section>
 
       {/* ── Deploy & How to Use ── */}
-      <section className="py-16 md:py-20 bg-surface-container-low/50">
-        <div className="max-w-6xl mx-auto px-4">
+      <section className="py-10 md:py-14 bg-surface-container-low/50">
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-10">
           <SectionHeading id="deploy" label="Deployment & How to Use" sub="Two ways to run it" />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -519,8 +638,8 @@ export default function RLAssignmentPage() {
       </section>
 
       {/* ── Security FYI ── */}
-      <section className="py-16 md:py-20">
-        <div className="max-w-6xl mx-auto px-4">
+      <section className="py-10 md:py-14">
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-10">
           <SectionHeading id="security" label="API Security & Data Policy" sub="FYI" />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -547,8 +666,8 @@ export default function RLAssignmentPage() {
       </section>
 
       {/* ── Tech Stack ── */}
-      <section className="py-16 md:py-20 bg-surface-container-low/50">
-        <div className="max-w-6xl mx-auto px-4">
+      <section className="py-10 md:py-14 bg-surface-container-low/50">
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-10">
           <SectionHeading id="stack" label="Tech Stack" sub="What powers it" />
 
           <Card>
@@ -577,8 +696,8 @@ export default function RLAssignmentPage() {
       </section>
 
       {/* ── Team / Inba vs Claude ── */}
-      <section className="py-16 md:py-20">
-        <div className="max-w-6xl mx-auto px-4">
+      <section className="py-10 md:py-14">
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-10">
           <SectionHeading id="team" label="How We Built This" sub="Inba + Claude" />
 
           <p className="text-sm text-on-surface-variant mb-6 max-w-2xl leading-relaxed">
@@ -622,7 +741,7 @@ export default function RLAssignmentPage() {
 
       {/* ── Footer ── */}
       <footer className="border-t border-outline-variant/30 py-8">
-        <div className="max-w-6xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <Icon name="bolt" className="text-tertiary text-lg" />
             <span className="font-headline font-bold text-sm">Plansync</span>
