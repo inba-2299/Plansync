@@ -67,11 +67,12 @@ export function ApiKeyCard({ onSubmit }: ApiKeyCardProps) {
         {!submitted ? (
           <>
             <div className="space-y-2">
-              <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest ml-1">
+              <label htmlFor="api-key-input" className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest ml-1">
                 API Key
               </label>
               <div className="relative group">
                 <input
+                  id="api-key-input"
                   type="password"
                   value={value}
                   onChange={(e) => setValue(e.target.value)}

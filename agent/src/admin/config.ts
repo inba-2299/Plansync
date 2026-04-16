@@ -206,14 +206,16 @@ export async function getAdminConfigSnapshot(): Promise<{
       ? modelOverride
       : (envModel ?? '(not set)');
 
+  const parsedMaxTokens = Number(maxTokensOverride);
   const effectiveMaxTokens =
-    maxTokensOverride !== null && maxTokensOverride !== undefined
-      ? Number(maxTokensOverride)
+    maxTokensOverride != null && Number.isFinite(parsedMaxTokens) && parsedMaxTokens > 0
+      ? parsedMaxTokens
       : DEFAULT_MAX_TOKENS;
 
+  const parsedMaxRetries = Number(maxRetriesOverride);
   const effectiveMaxRetries =
-    maxRetriesOverride !== null && maxRetriesOverride !== undefined
-      ? Number(maxRetriesOverride)
+    maxRetriesOverride != null && Number.isFinite(parsedMaxRetries) && parsedMaxRetries >= 0
+      ? parsedMaxRetries
       : DEFAULT_MAX_RETRIES;
 
   return {

@@ -66,18 +66,19 @@ export function ExecutionPlanCard({ goal, steps }: ExecutionPlanCardProps) {
                 )}
               >
                 {isDone ? (
-                  <span className="material-symbols-outlined text-base filled">
+                  <span className="material-symbols-outlined text-base filled" aria-label="Completed">
                     check
                   </span>
                 ) : isInProgress ? (
                   <span
                     className="material-symbols-outlined text-base animate-spin"
                     style={{ animationDuration: '2s' }}
+                    aria-label="In progress"
                   >
                     progress_activity
                   </span>
                 ) : isError ? (
-                  <span className="material-symbols-outlined text-base">close</span>
+                  <span className="material-symbols-outlined text-base" aria-label="Error">close</span>
                 ) : (
                   <span className="text-[10px] font-bold">{idx + 1}</span>
                 )}

@@ -53,7 +53,6 @@ export interface RecentSessionRow {
   sessionId: string;
   createdAt: number;
   ttlAt: number;
-  status: string;
   turnCount: number;
   eventCount: number;
   lastEventType: string | null;
@@ -283,7 +282,6 @@ export async function listRecentSessions(
           sessionId,
           createdAt,
           ttlAt: Number(meta.ttlAt ?? 0),
-          status: String(meta.status ?? 'unknown'),
           turnCount: Number(meta.turnCount ?? 0),
           eventCount: inspection.eventCount,
           lastEventType: inspection.lastEventType,

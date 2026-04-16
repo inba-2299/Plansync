@@ -124,6 +124,7 @@ export default function AdminDashboardPage() {
         router.replace('/admin/login');
         return;
       }
+      setError(res.error ?? 'Failed to load tools');
       return;
     }
     if (res.data) setToolsPayload(res.data);

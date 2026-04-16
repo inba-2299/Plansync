@@ -40,10 +40,14 @@ export async function createExecutionPlanTool(
     };
   }
 
+  const ALLOWED_STEP_STATUSES: ReadonlySet<string> = new Set(['pending', 'in_progress', 'done', 'failed']);
+
   const steps: ExecutionPlanStep[] = input.steps.map((s, i) => ({
     id: typeof s?.id === 'string' && s.id ? s.id : `step_${i + 1}`,
     label: typeof s?.label === 'string' && s.label ? s.label : `(step ${i + 1})`,
-    status: s?.status ?? (i === 0 ? 'in_progress' : 'pending'),
+    status: (typeof s?.status === 'string' && ALLOWED_STEP_STATUSES.has(s.status))
+      ? s.status as ExecutionPlanStep['status']
+      : (i === 0 ? 'in_progress' : 'pending'),
     notes: typeof s?.notes === 'string' ? s.notes : undefined,
   }));
 

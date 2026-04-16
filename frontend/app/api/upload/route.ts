@@ -62,6 +62,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 }
 
-// Allow large bodies (10 MB) — matches the Railway backend's express.raw limit
+// Body size limit enforced by Railway backend via express.raw({ limit: '10mb' }).
 export const runtime = 'nodejs';
 export const maxDuration = 30;

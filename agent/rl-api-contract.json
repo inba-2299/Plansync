@@ -85,9 +85,9 @@
             "teamMembers": {
               "members": [
                 {
-                  "emailId": "inbarajb91@gmail.com",
+                  "emailId": "dev@example.com",
                   "userId": 5000000027049,
-                  "firstName": "inbarajb91",
+                  "firstName": "dev",
                   "lastName": ""
                 },
                 {
@@ -123,15 +123,15 @@
             "archived": false,
             "visibility": "EVERYONE",
             "createdBy": {
-              "emailId": "inbarajb91@gmail.com",
+              "emailId": "dev@example.com",
               "userId": 5000000027049,
-              "firstName": "inbarajb91",
+              "firstName": "dev",
               "lastName": ""
             },
             "updatedBy": {
-              "emailId": "inbarajb91@gmail.com",
+              "emailId": "dev@example.com",
               "userId": 5000000027049,
-              "firstName": "inbarajb91",
+              "firstName": "dev",
               "lastName": ""
             },
             "currency": {
@@ -173,15 +173,15 @@
             "createdAt": 1776080664730,
             "updatedAt": 1776080669988,
             "createdBy": {
-              "emailId": "inbarajb91@gmail.com",
+              "emailId": "dev@example.com",
               "userId": 5000000027049,
-              "firstName": "inbarajb91",
+              "firstName": "dev",
               "lastName": ""
             },
             "updatedBy": {
-              "emailId": "inbarajb91@gmail.com",
+              "emailId": "dev@example.com",
               "userId": 5000000027049,
-              "firstName": "inbarajb91",
+              "firstName": "dev",
               "lastName": ""
             }
           },
@@ -192,9 +192,9 @@
             "createdAt": 1776080664838,
             "updatedAt": 1776080664841,
             "createdBy": {
-              "emailId": "inbarajb91@gmail.com",
+              "emailId": "dev@example.com",
               "userId": 5000000027049,
-              "firstName": "inbarajb91",
+              "firstName": "dev",
               "lastName": ""
             }
           },
@@ -205,15 +205,15 @@
             "createdAt": 1776097388948,
             "updatedAt": 1776097559457,
             "createdBy": {
-              "emailId": "inbarajb91@gmail.com",
+              "emailId": "dev@example.com",
               "userId": 5000000027049,
-              "firstName": "inbarajb91",
+              "firstName": "dev",
               "lastName": ""
             },
             "updatedBy": {
-              "emailId": "inbarajb91@gmail.com",
+              "emailId": "dev@example.com",
               "userId": 5000000027049,
-              "firstName": "inbarajb91",
+              "firstName": "dev",
               "lastName": ""
             }
           },
@@ -250,8 +250,8 @@
         "data": [
           {
             "userId": 5000000027049,
-            "email": "inbarajb91@gmail.com",
-            "firstName": "inbarajb91",
+            "email": "dev@example.com",
+            "firstName": "dev",
             "lastName": "",
             "type": "TEAM_MEMBER",
             "status": "ACTIVE",
@@ -259,9 +259,9 @@
             "createdAt": 1776080658486,
             "updatedAt": 1776096938876,
             "updatedBy": {
-              "emailId": "inbarajb91@gmail.com",
+              "emailId": "dev@example.com",
               "userId": 5000000027049,
-              "firstName": "inbarajb91",
+              "firstName": "dev",
               "lastName": ""
             }
           },
@@ -274,16 +274,16 @@
             "fields": [],
             "createdAt": 1776080666470,
             "createdBy": {
-              "emailId": "inbarajb91@gmail.com",
+              "emailId": "dev@example.com",
               "userId": 5000000027049,
-              "firstName": "inbarajb91",
+              "firstName": "dev",
               "lastName": ""
             },
             "updatedAt": 1776080667893,
             "updatedBy": {
-              "emailId": "inbarajb91@gmail.com",
+              "emailId": "dev@example.com",
               "userId": 5000000027049,
-              "firstName": "inbarajb91",
+              "firstName": "dev",
               "lastName": ""
             }
           },
@@ -296,16 +296,16 @@
             "fields": [],
             "createdAt": 1776080668039,
             "createdBy": {
-              "emailId": "inbarajb91@gmail.com",
+              "emailId": "dev@example.com",
               "userId": 5000000027049,
-              "firstName": "inbarajb91",
+              "firstName": "dev",
               "lastName": ""
             },
             "updatedAt": 1776080669376,
             "updatedBy": {
-              "emailId": "inbarajb91@gmail.com",
+              "emailId": "dev@example.com",
               "userId": 5000000027049,
-              "firstName": "inbarajb91",
+              "firstName": "dev",
               "lastName": ""
             }
           },
@@ -319,16 +319,16 @@
             "fields": [],
             "createdAt": 1776080670027,
             "createdBy": {
-              "emailId": "inbarajb91@gmail.com",
+              "emailId": "dev@example.com",
               "userId": 5000000027049,
-              "firstName": "inbarajb91",
+              "firstName": "dev",
               "lastName": ""
             },
             "updatedAt": 1776080671004,
             "updatedBy": {
-              "emailId": "inbarajb91@gmail.com",
+              "emailId": "dev@example.com",
               "userId": 5000000027049,
-              "firstName": "inbarajb91",
+              "firstName": "dev",
               "lastName": ""
             }
           },
@@ -342,37 +342,37 @@
             "fields": [],
             "createdAt": 1776080671128,
             "createdBy": {
-              "emailId": "inbarajb91@gmail.com",
+              "emailId": "dev@example.com",
               "userId": 5000000027049,
-              "firstName": "inbarajb91",
+              "firstName": "dev",
               "lastName": ""
             },
             "updatedAt": 1776080671944,
             "updatedBy": {
-              "emailId": "inbarajb91@gmail.com",
+              "emailId": "dev@example.com",
               "userId": 5000000027049,
-              "firstName": "inbarajb91",
+              "firstName": "dev",
               "lastName": ""
             }
           },
           {
             "userId": 5000000027136,
-            "email": "inbarajb91+fmeng@gmail.com",
-            "firstName": "inbarajb91fmeng",
+            "email": "customer@example.com",
+            "firstName": "devfmeng",
             "type": "CUSTOMER",
             "status": "INVITED",
             "fields": [],
             "createdAt": 1776100591152,
             "createdBy": {
-              "emailId": "inbarajb91@gmail.com",
+              "emailId": "dev@example.com",
               "userId": 5000000027049,
-              "firstName": "inbarajb91",
+              "firstName": "dev",
               "lastName": ""
             },
             "updatedBy": {
-              "emailId": "inbarajb91@gmail.com",
+              "emailId": "dev@example.com",
               "userId": 5000000027049,
-              "firstName": "inbarajb91",
+              "firstName": "dev",
               "lastName": ""
             }
           }
@@ -393,7 +393,7 @@
       "requestBody": {
         "projectName": "plansync-test-1776197114083-project",
         "owner": {
-          "emailId": "inbarajb91@gmail.com"
+          "emailId": "dev@example.com"
         },
         "customer": {
           "companyName": "plansync-test-1776197114083-customer"
@@ -412,17 +412,17 @@
         "createdAt": 1776197116473,
         "updatedAt": 1776197117389,
         "owner": {
-          "emailId": "inbarajb91@gmail.com",
+          "emailId": "dev@example.com",
           "userId": 5000000027049,
-          "firstName": "inbarajb91",
+          "firstName": "dev",
           "lastName": ""
         },
         "teamMembers": {
           "members": [
             {
-              "emailId": "inbarajb91@gmail.com",
+              "emailId": "dev@example.com",
               "userId": 5000000027049,
-              "firstName": "inbarajb91",
+              "firstName": "dev",
               "lastName": ""
             }
           ],

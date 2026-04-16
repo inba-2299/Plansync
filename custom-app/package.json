@@ -9,6 +9,6 @@
     "deploy": "rli deploy"
   },
   "devDependencies": {
-    "@rocketlane/rli": "*"
+    "@rocketlane/rli": "^1.0.0"
   }
 }

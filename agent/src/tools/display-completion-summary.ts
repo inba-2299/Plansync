@@ -45,9 +45,6 @@ export async function displayCompletionSummaryTool(
         (stats.subtasksCreated ?? 0) +
         (stats.milestonesCreated ?? 0);
 
-  // Update session status
-  ctx.session.meta.status = 'done';
-
   const lines: string[] = [];
   lines.push('✓ Execution complete.');
   lines.push('');

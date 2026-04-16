@@ -2,7 +2,7 @@
 
 > **AI agent that reads any project plan CSV/Excel file and creates it as a fully structured project in Rocketlane.**
 > Built as the take-home assignment for the **Rocketlane Implementation Manager** role.
-> Submitted: 2026-04-16. Author: Inbaraj B.
+> Submitted: 2026-04-17. Author: Inbaraj B.
 
 ---
 
@@ -240,7 +240,7 @@ Beyond the six core deliverables, Plansync ships with a **lightweight operator a
 Four-tab layout with lazy loading:
 
 - **Observability** — 6 stat cards (Runs Today, Success Rate, Active Now, Errors Today, Est. Cost Today, Avg Cost/Run), plus a per-model usage breakdown showing input / output / cache read / cache write tokens with cost estimates. All stats are pre-computed counters updated in real-time on every agent event, so the dashboard loads in ~200ms.
-- **Runtime Config** — editor for the Anthropic model (Haiku / Sonnet / Opus), max output tokens, and 429 retry cap. Changes write to Redis and take effect on the next agent turn **without a Railway redeploy**. Loop.ts now reads from Redis first, falls back to env var, falls back to a hardcoded default.
+- **Runtime Config** — editor for the Anthropic model (Haiku / Sonnet / Opus), max output tokens, and 429 retry cap. Changes write to Redis and take effect on the next agent turn **without a Railway redeploy**. Loop.ts now reads from Redis runtime config first, falls back to the `ANTHROPIC_MODEL` env var; if neither is set, the loop fails fast with a clear error (there is no hardcoded default).
 - **Agent Tools** — grid of all 22 tools organized into 7 functional categories (Input & Context, Planning & Metacognition, Memory, HITL, Creation, Verification, Display, Runtime Docs Recovery) with human-readable descriptions and enable/disable toggles. `request_user_approval` is marked as protected (lock icon, cannot be disabled — it's the only blocking tool in the system, and the entire interactive UX depends on it).
 - **Recent Sessions** — filterable table with date range (Today / 24h / 7d / All), status (All / Success / Errors / Active / Abandoned), and sessionId search. Shows per-session stats: created time, status badge, turns, events, tokens, estimated cost, last event type.
 
