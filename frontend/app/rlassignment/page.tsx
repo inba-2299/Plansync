@@ -652,8 +652,17 @@ export default function RLAssignmentPage() {
             </Card>
           </div>
 
+          {/* API key hint */}
+          <div className="mt-4 rounded-xl bg-primary/[0.04] border border-primary/15 px-5 py-3 flex items-start gap-3">
+            <Icon name="key" className="text-primary text-xl mt-0.5 shrink-0" />
+            <p className="text-xs text-on-surface-variant leading-relaxed">
+              <span className="font-semibold text-on-surface">You&apos;ll need a Rocketlane API key to get started.</span>{' '}
+              Generate one from your workspace: <span className="font-medium text-on-surface">Settings &rarr; API &rarr; Generate API Key</span>. The agent will ask for it on the first step.
+            </p>
+          </div>
+
           {/* Janani invite note */}
-          <div className="mt-4 rounded-xl bg-surface-container border border-outline-variant/30 px-5 py-3 flex items-start gap-3">
+          <div className="mt-3 rounded-xl bg-surface-container border border-outline-variant/30 px-5 py-3 flex items-start gap-3">
             <Icon name="group_add" className="text-primary text-xl mt-0.5 shrink-0" />
             <p className="text-xs text-on-surface-variant leading-relaxed">
               <span className="font-semibold text-on-surface">Janani has been invited to inbarajb.rocketlane.com.</span>{' '}
