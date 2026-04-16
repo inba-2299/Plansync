@@ -569,6 +569,46 @@ export default function RLAssignmentPage() {
               </div>
             </div>
           </Card>
+
+          {/* Honest autonomy split */}
+          <Card className="mt-6">
+            <h3 className="font-headline font-bold text-sm mb-1 text-on-surface">Honest Autonomy Split</h3>
+            <p className="text-[11px] text-on-surface-variant mb-4">Where the agent genuinely thinks vs. where we guide it through the system prompt.</p>
+            <div className="grid grid-cols-[1fr_80px_80px] gap-px bg-outline-variant/20 rounded-xl overflow-hidden">
+              {/* Header */}
+              <div className="bg-primary/[0.07] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-primary">Capability</div>
+              <div className="bg-emerald-50 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-emerald-700 text-center">Agent</div>
+              <div className="bg-blue-50 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-blue-700 text-center">Guided</div>
+
+              {[
+                { area: 'Plan interpretation', agent: 90, desc: 'Reasons about CSV structure, hierarchy, column mapping from first principles' },
+                { area: 'Error recovery', agent: 70, desc: 'Reads validation errors, reasons about fixes, decides whether to retry or ask' },
+                { area: 'Metadata gathering', agent: 20, desc: 'System prompt provides the sequence and templates; agent fills in context-specific values' },
+                { area: 'Overall flow', agent: 10, desc: 'System prompt defines the journey; agent follows the prescribed sequence' },
+                { area: 'Execution', agent: 5, desc: 'One deterministic batch call after plan approval — the agent just triggers it' },
+              ].map((row, i) => (
+                <>
+                  <div key={`${row.area}-l`} className={`px-4 py-3 ${i % 2 === 0 ? 'bg-surface-container-lowest' : 'bg-surface-container-low'}`}>
+                    <div className="text-xs font-semibold text-on-surface">{row.area}</div>
+                    <div className="text-[10px] text-on-surface-variant mt-0.5">{row.desc}</div>
+                  </div>
+                  <div key={`${row.area}-a`} className={`px-3 py-3 flex items-center justify-center ${i % 2 === 0 ? 'bg-surface-container-lowest' : 'bg-surface-container-low'}`}>
+                    <div className="text-center">
+                      <div className="text-sm font-bold text-emerald-600">{row.agent}%</div>
+                    </div>
+                  </div>
+                  <div key={`${row.area}-g`} className={`px-3 py-3 flex items-center justify-center ${i % 2 === 0 ? 'bg-surface-container-lowest' : 'bg-surface-container-low'}`}>
+                    <div className="text-center">
+                      <div className="text-sm font-bold text-blue-600">{100 - row.agent}%</div>
+                    </div>
+                  </div>
+                </>
+              ))}
+            </div>
+            <p className="text-[10px] text-on-surface-variant mt-3 leading-relaxed">
+              The agent is autonomous where it matters &mdash; interpreting plans, recovering from errors, adapting to messy data. It&apos;s guided where predictability matters &mdash; the overall flow, the UI, the API calls. A fully autonomous agent would be unpredictable and expensive. The system prompt is guardrails, not a cage.
+            </p>
+          </Card>
         </div>
       </section>
 
