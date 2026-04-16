@@ -312,6 +312,9 @@ export default function RLAssignmentPage() {
                 <a href="https://github.com/inba-2299/Plansync" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-surface-container text-on-surface font-semibold text-sm px-5 py-2.5 rounded-xl hover:bg-surface-container-high transition-colors border border-outline-variant/30">
                   <Icon name="code" className="text-lg" /> Source Code
                 </a>
+                <a href="https://plansync-tau.vercel.app/admin" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-surface-container text-on-surface font-semibold text-sm px-5 py-2.5 rounded-xl hover:bg-surface-container-high transition-colors border border-outline-variant/30">
+                  <Icon name="admin_panel_settings" className="text-lg" /> Admin Portal
+                </a>
               </div>
             </div>
 
@@ -792,6 +795,7 @@ export default function RLAssignmentPage() {
           </div>
           <div className="flex items-center gap-4 text-xs text-on-surface-variant">
             <a href="https://plansync-tau.vercel.app" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Live App</a>
+            <a href="https://plansync-tau.vercel.app/admin" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Admin Portal</a>
             <a href="https://github.com/inba-2299/Plansync" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">GitHub</a>
             <a href="https://plansync-production.up.railway.app/health" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Health</a>
           </div>
