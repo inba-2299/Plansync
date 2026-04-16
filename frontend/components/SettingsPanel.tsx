@@ -114,8 +114,17 @@ export default function SettingsPanel({ sessionId, isOpen, onClose }: SettingsPa
           <p className="text-[10px] text-on-surface-variant mt-1">
             {hasKey
               ? 'Enter a new key to replace the existing one. Leave blank to keep current.'
-              : 'Bring your own key to use your Anthropic account. If blank, the operator\u2019s key is used.'}
+              : 'Bring your own key to use your Anthropic account. If blank, the default key is used.'}
           </p>
+          <a
+            href="https://console.anthropic.com/settings/keys"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline mt-1"
+          >
+            <span className="material-symbols-outlined text-xs">open_in_new</span>
+            Get a key at console.anthropic.com
+          </a>
         </div>
 
         {/* Model Selection */}
