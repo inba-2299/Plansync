@@ -523,6 +523,366 @@ tool_result: "✓ PLAN VALID. 8 phases, 21 tasks. artifact:abc123"
   },
 ];
 
+const SSE_STREAMING_STEPS = [
+  {
+    label: 'Anthropic \u2192 Backend \u2192 Browser',
+    detail: 'Anthropic streams token-by-token. The backend receives each chunk, wraps it as an SSE event (data: JSON\\n\\n), and forwards it to the browser. Every event is also stored to Redis for replay on refresh.',
+    visual: (
+      <div className="space-y-3">
+        <FlowBox icon="cloud" label="Anthropic API" sub="Streams tokens one by one" color="blue" active />
+        <Arrow />
+        <FlowBox icon="dns" label="Backend (Express)" sub="Receives chunk, wraps as SSE event" color="primary" />
+        <Arrow />
+        <div className="grid grid-cols-2 gap-2">
+          <FlowBox icon="database" label="Redis RPUSH" sub="Stored for replay" color="amber" />
+          <FlowBox icon="wifi" label="SSE to Browser" sub='res.write("data: " + JSON)' color="success" />
+        </div>
+        <CodeSnippet code={`// Each chunk from Anthropic becomes:
+res.write(\`data: \${JSON.stringify({
+  type: "text_delta",
+  text: "The plan has 8 phases..."
+})}\\n\\n\`);`} />
+      </div>
+    ),
+  },
+  {
+    label: 'Event types',
+    detail: 'The backend emits different SSE event types, each mapped to a specific UI component. The frontend routes each event type to the right handler.',
+    visual: (
+      <div className="space-y-1.5">
+        {[
+          { type: 'text_delta', desc: 'Reasoning text — streams into chat bubble', icon: 'text_fields', color: 'primary' },
+          { type: 'tool_use_start / end', desc: 'Tool calls — renders tool activity indicator', icon: 'build', color: 'tertiary' },
+          { type: 'display_component', desc: 'Rich cards — plan tree, validation report', icon: 'widgets', color: 'success' },
+          { type: 'journey_update', desc: 'Stepper state — updates JourneyStepper', icon: 'linear_scale', color: 'blue' },
+          { type: 'awaiting_user', desc: 'Approval card — pauses loop, shows options', icon: 'front_hand', color: 'rose' },
+          { type: 'done', desc: 'Turn complete — unlocks input', icon: 'check_circle', color: 'success' },
+          { type: 'error', desc: 'Error message — renders error banner', icon: 'error', color: 'rose' },
+        ].map((e) => (
+          <div key={e.type} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-surface-container border border-outline-variant/15 text-[11px]">
+            <Icon name={e.icon} className={`text-sm text-${e.color === 'primary' ? 'primary' : e.color === 'tertiary' ? 'tertiary' : e.color === 'success' ? 'success' : e.color === 'rose' ? 'rose-600' : 'blue-600'}`} />
+            <span className="font-mono font-semibold text-on-surface w-36 shrink-0">{e.type}</span>
+            <span className="text-on-surface-variant">{e.desc}</span>
+          </div>
+        ))}
+      </div>
+    ),
+  },
+  {
+    label: 'Heartbeat keepalive',
+    detail: 'Every 15 seconds the backend sends a comment line (: heartbeat) to prevent Railway/Cloudflare proxy idle timeout (60\u2013100s). Without this, long Anthropic calls would silently drop the connection.',
+    visual: (
+      <div className="space-y-3">
+        <div className="grid grid-cols-3 gap-2">
+          <FlowBox icon="psychology" label="Claude thinking" sub="20s+ for complex plans" color="primary" active />
+          <FlowBox icon="cloud" label="Railway proxy" sub="Idle timeout: 60s" color="amber" />
+          <FlowBox icon="security" label="Cloudflare" sub="Idle timeout: 100s" color="amber" />
+        </div>
+        <Arrow />
+        <CodeSnippet code={`// Every 15 seconds during agent processing:
+const heartbeat = setInterval(() => {
+  res.write(": heartbeat\\n\\n");  // SSE comment
+}, 15_000);
+
+// Browser ignores SSE comments — but the
+// proxy sees traffic and keeps the connection alive.`} />
+        <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[10px] text-amber-700">
+          <strong>Without heartbeat:</strong> If Claude takes 45s to reason about a complex plan, Railway closes the connection at 60s of silence. The user sees a blank screen. With heartbeat, the connection stays open indefinitely.
+        </div>
+      </div>
+    ),
+  },
+];
+
+const VALIDATION_LOOP_STEPS = [
+  {
+    label: '11 programmatic checks',
+    detail: 'The validate_plan tool runs 11 checks against the parsed plan. Each check returns specific, actionable errors the agent can reason about and fix.',
+    visual: (
+      <div className="space-y-1.5">
+        {[
+          { check: 'MISSING_NAME', desc: 'Item has no name/title' },
+          { check: 'BROKEN_PARENT_REF', desc: 'parentId points to nonexistent item' },
+          { check: 'ORPHAN', desc: 'Non-phase item with no parent' },
+          { check: 'CIRCULAR_DEP', desc: 'Dependency cycle detected (A \u2192 B \u2192 A)' },
+          { check: 'ROW_COUNT_MISMATCH', desc: 'Parsed items \u2260 CSV row count' },
+          { check: 'BAD_DATE', desc: 'Start date after due date' },
+          { check: 'BAD_EFFORT', desc: 'Negative or non-numeric effort value' },
+          { check: 'DEPTH_INCONSISTENCY', desc: 'Depth levels skip (1 \u2192 3, missing 2)' },
+          { check: 'NON_PHASE_NO_PARENT', desc: 'Task/subtask not under any phase' },
+          { check: 'DUPLICATE_ID', desc: 'Two items share the same ID' },
+          { check: 'PHASE_DATES_MISSING', desc: 'Phase has no start/due date' },
+        ].map((c) => (
+          <div key={c.check} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-container border border-outline-variant/15 text-[10px]">
+            <span className="font-mono font-bold text-rose-600 w-40 shrink-0">{c.check}</span>
+            <span className="text-on-surface-variant">{c.desc}</span>
+          </div>
+        ))}
+      </div>
+    ),
+  },
+  {
+    label: 'Self-correction cycle',
+    detail: 'The agent calls validate_plan, reads the errors, reasons about fixes, modifies the plan, and re-validates. This loop repeats until the plan is clean or the agent determines it needs user input.',
+    visual: (
+      <div className="space-y-3">
+        <FlowBox icon="build" label="validate_plan()" sub="Run 11 checks" color="primary" active />
+        <Arrow />
+        <CodeSnippet code={`tool_result: "\u2717 PLAN INVALID \u2014 3 errors:
+  \u2022 [CIRCULAR_DEP] task-A \u2192 task-B \u2192 task-A
+  \u2022 [ORPHAN] task-7 has no parent phase
+  \u2022 [PHASE_DATES_MISSING] Phase 3 has no dates"`} />
+        <Arrow />
+        <FlowBox icon="psychology" label="Agent reasons" sub="Fix circular dep, assign orphan, derive dates" color="tertiary" />
+        <Arrow />
+        <FlowBox icon="auto_fix_high" label="Agent modifies plan" sub="Removes dep, moves orphan, calculates dates" color="success" />
+        <Arrow />
+        <FlowBox icon="replay" label="validate_plan() again" sub="Re-run all 11 checks" color="primary" />
+        <Arrow />
+        <FlowBox icon="check_circle" label="PLAN VALID" sub="0 errors \u2014 ready for execution" color="success" />
+      </div>
+    ),
+  },
+  {
+    label: 'What the agent can vs can\u2019t fix alone',
+    detail: 'The agent can autonomously fix structural issues. But when data is genuinely ambiguous or missing, it falls back to request_user_approval.',
+    visual: (
+      <div className="space-y-3">
+        <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4">
+          <div className="text-[10px] font-bold text-emerald-700 mb-2 flex items-center gap-1.5">
+            <Icon name="auto_fix_high" className="text-sm" /> CAN fix autonomously
+          </div>
+          <div className="space-y-1 text-[10px] text-emerald-800">
+            <p>Missing phase dates \u2192 derive from child tasks&apos; min/max</p>
+            <p>Orphan items \u2192 group under synthetic phase</p>
+            <p>Date format normalization \u2192 detect and standardize</p>
+            <p>Duplicate ID resolution \u2192 append suffix</p>
+          </div>
+        </div>
+        <div className="rounded-xl bg-rose-50 border border-rose-200 p-4">
+          <div className="text-[10px] font-bold text-rose-700 mb-2 flex items-center gap-1.5">
+            <Icon name="front_hand" className="text-sm" /> CANNOT fix \u2192 asks the user
+          </div>
+          <div className="space-y-1 text-[10px] text-rose-800">
+            <p>Ambiguous DD/MM dates \u2192 is 04/05 April 5 or May 4?</p>
+            <p>No detectable hierarchy at all \u2192 flat list, no phases</p>
+            <p>Missing data that requires domain knowledge</p>
+            <p>Contradictory instructions in the CSV</p>
+          </div>
+        </div>
+      </div>
+    ),
+  },
+];
+
+const OBSERVABILITY_STEPS = [
+  {
+    label: 'Pre-computed counters, not derived stats',
+    detail: 'The v1 admin dashboard took 30 seconds because it SCANned every Redis session on every page load (~360 calls). v2 uses pre-computed counters: SADD on session start, SADD on completion, SADD on error. Dashboard reads 5 SCARD calls \u2192 200ms load.',
+    visual: (
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl bg-rose-50 border border-rose-200 p-4">
+            <div className="text-[10px] font-bold text-rose-700 mb-2">v1: SCAN on every load</div>
+            <div className="space-y-1 text-[10px] text-rose-800">
+              <p>SCAN 0 MATCH session:* \u2192 ~120 keys</p>
+              <p>GET each key \u2192 ~120 calls</p>
+              <p>Filter by date \u2192 ~120 checks</p>
+              <p className="font-bold mt-2">~360 Redis calls, 30s load</p>
+            </div>
+          </div>
+          <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4">
+            <div className="text-[10px] font-bold text-emerald-700 mb-2">v2: Pre-computed sets</div>
+            <div className="space-y-1 text-[10px] text-emerald-800">
+              <p>SCARD stats:sessions:all</p>
+              <p>SCARD stats:sessions:today</p>
+              <p>SCARD stats:sessions:success:today</p>
+              <p>SCARD stats:sessions:error:today</p>
+              <p>SCARD stats:sessions:active</p>
+              <p className="font-bold mt-2">5 Redis calls, 200ms load</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    ),
+  },
+  {
+    label: 'What the dashboard shows',
+    detail: 'Six stat cards for session health at a glance, plus a daily usage breakdown by model showing token consumption and estimated cost.',
+    visual: (
+      <div className="space-y-3">
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: 'Total Sessions', value: '47', icon: 'tag', color: 'primary' },
+            { label: 'Runs Today', value: '12', icon: 'today', color: 'blue' },
+            { label: 'Successful Today', value: '10', icon: 'check_circle', color: 'success' },
+            { label: 'Errored Today', value: '2', icon: 'error', color: 'rose' },
+            { label: 'Active Now', value: '3', icon: 'bolt', color: 'amber' },
+            { label: 'Success Rate', value: '83%', icon: 'percent', color: 'success' },
+          ].map((s) => (
+            <div key={s.label} className="rounded-xl bg-surface-container border border-outline-variant/15 p-3 text-center">
+              <Icon name={s.icon} className={`text-lg ${s.color === 'primary' ? 'text-primary' : s.color === 'success' ? 'text-success' : s.color === 'rose' ? 'text-rose-600' : s.color === 'amber' ? 'text-amber-600' : 'text-blue-600'}`} />
+              <div className="text-lg font-bold text-on-surface mt-1">{s.value}</div>
+              <div className="text-[9px] text-on-surface-variant">{s.label}</div>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-lg bg-surface-container border border-outline-variant/15 px-3 py-2 text-[10px] text-on-surface-variant">
+          <strong>Daily usage breakdown:</strong> Input tokens, output tokens, cache read, cache write, estimated cost \u2014 grouped by model (Haiku vs Sonnet).
+        </div>
+      </div>
+    ),
+  },
+  {
+    label: 'Runtime config without redeploy',
+    detail: 'Admin can change model, max tokens, temperature, and retry cap via the dashboard. Changes write to Redis. The agent loop reads config FRESH at the start of every turn. No Railway redeploy needed.',
+    visual: (
+      <div className="space-y-3">
+        <div className="space-y-1.5">
+          {[
+            { key: 'model', value: 'claude-haiku-4-5 \u2192 claude-sonnet-4-5', desc: 'Switch to higher-capability model' },
+            { key: 'max_tokens', value: '4096 \u2192 8192', desc: 'Allow longer agent responses' },
+            { key: 'temperature', value: '0.3 \u2192 0.5', desc: 'More creative reasoning' },
+            { key: 'retry_cap', value: '3 \u2192 5', desc: 'More retries before giving up' },
+          ].map((c) => (
+            <div key={c.key} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-container border border-outline-variant/15">
+              <span className="font-mono text-[10px] font-bold text-primary w-24 shrink-0">{c.key}</span>
+              <span className="font-mono text-[10px] text-on-surface flex-1">{c.value}</span>
+              <span className="text-[9px] text-on-surface-variant">{c.desc}</span>
+            </div>
+          ))}
+        </div>
+        <Arrow />
+        <FlowBox icon="database" label="Redis config:agent" sub="Written by admin dashboard" color="amber" active />
+        <Arrow />
+        <FlowBox icon="psychology" label="Agent loop reads fresh config" sub="Every turn, not every deploy" color="primary" />
+        <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-[10px] text-emerald-700">
+          <strong>Effect:</strong> Takes effect on the very next agent turn. No redeploy, no restart, no downtime.
+        </div>
+      </div>
+    ),
+  },
+];
+
+const TOKEN_OPTIMIZATION_STEPS = [
+  {
+    label: 'The $3 problem',
+    detail: 'Before optimization, each run on Sonnet cost ~$3. The system prompt (671 lines) + tool schemas (22 tools) + growing history = massive input tokens on every turn.',
+    visual: (
+      <div className="space-y-3">
+        <div className="rounded-xl bg-rose-50 border border-rose-200 p-4">
+          <div className="text-[10px] font-bold text-rose-700 mb-2">Before optimization (per run)</div>
+          <div className="space-y-1.5 text-[10px] text-rose-800">
+            <DataFlow from="System prompt" to="671 lines" label="~8,000 tokens" />
+            <DataFlow from="Tool schemas" to="22 tools" label="~7,000 tokens" />
+            <DataFlow from="History" to="12 turns" label="~15,000 tokens" />
+            <div className="border-t border-rose-200 pt-1.5 mt-1.5 font-bold">
+              = ~30,000 input tokens per turn x 15 turns = ~$3/run
+            </div>
+          </div>
+        </div>
+      </div>
+    ),
+  },
+  {
+    label: 'Prompt caching',
+    detail: 'cache_control: ephemeral on the system prompt and the last tool schema. After turn 1, ~15,000 tokens of prompt + tools are cached and charged at 10% of the base rate. Saves ~70% on input costs.',
+    visual: (
+      <div className="space-y-3">
+        <CodeSnippet code={`messages.stream({
+  system: [{
+    type: "text",
+    text: SYSTEM_PROMPT,        // 671 lines
+    cache_control: { type: "ephemeral" }  // <-- cached
+  }],
+  tools: [...toolSchemas, {
+    ...lastTool,
+    cache_control: { type: "ephemeral" }  // <-- cached
+  }],
+})`} />
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl bg-rose-50 border border-rose-200 p-3">
+            <div className="text-[10px] font-bold text-rose-700 mb-1">Turn 1 (cold)</div>
+            <p className="text-[10px] text-rose-800">15,000 tokens at full price</p>
+            <p className="text-[10px] text-rose-800 font-bold">= $0.045</p>
+          </div>
+          <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3">
+            <div className="text-[10px] font-bold text-emerald-700 mb-1">Turns 2-15 (cached)</div>
+            <p className="text-[10px] text-emerald-800">15,000 tokens at 10% rate</p>
+            <p className="text-[10px] text-emerald-800 font-bold">= $0.0045 each</p>
+          </div>
+        </div>
+      </div>
+    ),
+  },
+  {
+    label: 'Artifact pattern',
+    detail: 'Large payloads (plan JSON, validation reports) stored in Redis, not in conversation history. History carries summaries + artifactId. Agent calls query_artifact on demand. Prevents exponential token growth.',
+    visual: (
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl bg-rose-50 border border-rose-200 p-4">
+            <div className="text-[10px] font-bold text-rose-700 mb-2">Without artifacts</div>
+            <div className="space-y-1 text-[10px] text-rose-800">
+              <p>Turn 1: plan in history (8K tok)</p>
+              <p>Turn 5: plan x5 (40K tok)</p>
+              <p>Turn 10: plan x10 (80K tok)</p>
+              <p className="font-bold mt-1">Exponential growth</p>
+            </div>
+          </div>
+          <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4">
+            <div className="text-[10px] font-bold text-emerald-700 mb-2">With artifacts</div>
+            <div className="space-y-1 text-[10px] text-emerald-800">
+              <p>Turn 1: summary (200 tok)</p>
+              <p>Turn 5: summaries (1K tok)</p>
+              <p>Turn 10: summaries (2K tok)</p>
+              <p className="font-bold mt-1">Linear growth</p>
+            </div>
+          </div>
+        </div>
+        <CodeSnippet code={`// In history (small):
+"✓ PLAN VALID. 8 phases, 21 tasks. artifact:abc123"
+
+// In Redis (large, on-demand):
+query_artifact("abc123") → { phases: [...], tasks: [...] }`} />
+      </div>
+    ),
+  },
+  {
+    label: 'Batch execution',
+    detail: 'The architectural reversal. 15\u201330 tool calls per execution became 1 call. Each tool call resends full history. Fewer calls = dramatically fewer input tokens. $3 \u2192 $0.86.',
+    visual: (
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl bg-rose-50 border border-rose-200 p-4">
+            <div className="text-[10px] font-bold text-rose-700 mb-2">Before: fine-grained tools</div>
+            <div className="space-y-1 text-[10px] text-rose-800">
+              <p>create_phase x8 = 8 calls</p>
+              <p>create_task x15 = 15 calls</p>
+              <p>add_dependency x7 = 7 calls</p>
+              <p className="border-t border-rose-200 pt-1 mt-1 font-bold">30 calls x 30K input tok = 900K tok</p>
+              <p className="font-bold">~$3.00 / run</p>
+            </div>
+          </div>
+          <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4">
+            <div className="text-[10px] font-bold text-emerald-700 mb-2">After: execute_plan_creation</div>
+            <div className="space-y-1 text-[10px] text-emerald-800">
+              <p>execute_plan_creation x1 = 1 call</p>
+              <p>Backend creates all items</p>
+              <p>Returns single summary</p>
+              <p className="border-t border-emerald-200 pt-1 mt-1 font-bold">1 call x 30K input tok = 30K tok</p>
+              <p className="font-bold">~$0.86 / run</p>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-lg bg-primary/5 border border-primary/15 px-3 py-2 text-[10px] text-on-surface">
+          <strong>71% cost reduction.</strong> Fine-grained tools still exist for failure recovery and surgical edits \u2014 but the happy path is one deterministic batch call.
+        </div>
+      </div>
+    ),
+  },
+];
+
 /* ------------------------------------------------------------------ */
 /*  NAV                                                                */
 /* ------------------------------------------------------------------ */
@@ -531,6 +891,10 @@ const SECTIONS = [
   { id: 'session-sticky', label: 'Session Stickiness' },
   { id: 'error-recovery', label: 'Error Recovery' },
   { id: 'memory', label: 'Memory Architecture' },
+  { id: 'streaming', label: 'SSE Streaming' },
+  { id: 'validation', label: 'Validation Loop' },
+  { id: 'observability', label: 'Observability' },
+  { id: 'token-optimization', label: 'Token Optimization' },
 ];
 
 const ZOOM_LEVELS = [
@@ -596,6 +960,22 @@ export default function HowItWorksPage() {
       <div className="border-t border-outline-variant/20" />
 
       <InteractiveSection id="memory" title="Memory Architecture" sub="Context management" icon="memory" steps={MEMORY_STEPS} />
+
+      <div className="border-t border-outline-variant/20" />
+
+      <InteractiveSection id="streaming" title="SSE Streaming" sub="Real-time delivery" icon="stream" steps={SSE_STREAMING_STEPS} />
+
+      <div className="border-t border-outline-variant/20" />
+
+      <InteractiveSection id="validation" title="Validation Loop" sub="Plan integrity" icon="verified" steps={VALIDATION_LOOP_STEPS} />
+
+      <div className="border-t border-outline-variant/20" />
+
+      <InteractiveSection id="observability" title="Observability" sub="Admin dashboard" icon="monitoring" steps={OBSERVABILITY_STEPS} />
+
+      <div className="border-t border-outline-variant/20" />
+
+      <InteractiveSection id="token-optimization" title="Token Optimization" sub="Cost reduction" icon="savings" steps={TOKEN_OPTIMIZATION_STEPS} />
 
       {/* Footer */}
       <footer className="border-t border-outline-variant/30 py-8 mt-10">
