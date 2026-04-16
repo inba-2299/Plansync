@@ -215,7 +215,7 @@ export function ApprovalPrompt({
               key="options"
               initial={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="grid grid-cols-1 sm:grid-cols-2 gap-2"
+              className="grid grid-cols-1 gap-2"
             >
               {options.map((option, idx) => {
                 const isPrimary =

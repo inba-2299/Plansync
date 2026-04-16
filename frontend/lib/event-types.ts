@@ -1,3 +1,5 @@
+// SYNC NOTE: Backend source at agent/src/types.ts — update both when changing shared shapes
+
 /**
  * Event types — frontend-side mirror of agent/src/types.ts AgentEvent.
  *

@@ -36,7 +36,11 @@ if (!apiKey || apiKey.startsWith('REPLACE_ME')) {
   process.exit(1);
 }
 
-const ownerEmail = process.env.TEST_ROCKETLANE_OWNER_EMAIL ?? 'inbarajb91@gmail.com';
+const ownerEmail = process.env.TEST_ROCKETLANE_OWNER_EMAIL;
+if (!ownerEmail) {
+  console.error('TEST_ROCKETLANE_OWNER_EMAIL not set in agent/.env');
+  process.exit(1);
+}
 const testPrefix = `plansync-test-${Date.now()}`;
 const customerName = `${testPrefix}-customer`;
 const projectName = `${testPrefix}-project`;

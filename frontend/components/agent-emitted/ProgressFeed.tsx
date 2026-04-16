@@ -43,7 +43,7 @@ export function ProgressFeed({
               Current Status
             </div>
             <div className="font-headline font-extrabold text-on-surface text-xl">
-              {isComplete ? 'Phase complete' : `Creating ${completed + 1} of ${total}…`}
+              {isComplete ? 'Phase complete' : total === 0 ? 'Initializing...' : `Creating ${completed + 1} of ${total}…`}
             </div>
             {(currentPhase || detail) && (
               <div className="text-xs text-on-surface-variant mt-1">

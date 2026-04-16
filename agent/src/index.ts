@@ -56,7 +56,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   const isAllowed = allowedList.some((a) => {
     if (a === origin) return true;
     if (a.startsWith('https://*.')) {
-      const suffix = a.slice('https://*.'.length);
+      const suffix = a.slice('https://*'.length);
       return origin.endsWith(suffix);
     }
     return false;
@@ -460,7 +460,7 @@ app.get('/session/:id/events', async (req: Request, res: Response) => {
   }
 });
 
-// ---------- DELETE /session/:id ----------
+// ---------- DELETE /session/:id/events ----------
 //
 // Clear a session's events log. Called by the frontend's "New session"
 // button flow so that explicitly starting over doesn't leave orphan

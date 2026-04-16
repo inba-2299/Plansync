@@ -261,6 +261,7 @@ export function Chat() {
   // For text_delta accumulation we need to know which reasoning bubble is "current"
   const currentReasoningIdRef = useRef<string | null>(null);
   const currentReasoningStartedAtRef = useRef<number | null>(null);
+  const memoryToastTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
   // Mirror of messages state as a ref, used by callbacks that need to
   // check "is there a pending approval?" without being recreated on
@@ -290,9 +291,20 @@ export function Chat() {
   const showMemoryToast = useCallback((key: string) => {
     const toastId = `mem-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     setMemoryToasts((prev) => [...prev, { id: toastId, key }]);
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       setMemoryToasts((prev) => prev.filter((t) => t.id !== toastId));
+      memoryToastTimeoutsRef.current.delete(timeoutId);
     }, 2500);
+    memoryToastTimeoutsRef.current.add(timeoutId);
+  }, []);
+
+  // Cleanup memory toast timeouts on unmount
+  useEffect(() => {
+    const timeouts = memoryToastTimeoutsRef.current;
+    return () => {
+      timeouts.forEach((id) => clearTimeout(id));
+      timeouts.clear();
+    };
   }, []);
 
   // ---------- SSE event handler ----------

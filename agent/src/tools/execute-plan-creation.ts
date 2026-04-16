@@ -398,15 +398,21 @@ export async function executePlanCreationTool(
     }
   }
 
-  // Final progress ping at 100%
-  emitProgress('Complete', 'Project created successfully');
-
   // ---------- compose summary ----------
 
   const createdItems = itemResults.filter((r) => r.rlId !== undefined);
   const failedItems = itemResults.filter((r) => r.error !== undefined);
   const createdDeps = depResults.filter((r) => r.ok).length;
   const failedDeps = depResults.filter((r) => !r.ok).length;
+
+  // Final progress ping at 100% — after computing failure counts
+  const hasFailures = failedItems.length > 0 || failedDeps > 0;
+  emitProgress(
+    hasFailures ? 'Complete with errors' : 'Complete',
+    hasFailures
+      ? `Done — ${failedItems.length} item(s) and ${failedDeps} dependency link(s) failed`
+      : 'Project created successfully',
+  );
 
   const phaseCount = createdItems.filter((r) => r.type === 'phase').length;
   const taskCount = createdItems.filter((r) => r.type === 'task').length;

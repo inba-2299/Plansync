@@ -2,7 +2,7 @@
  * Tool catalog metadata for the admin dashboard.
  *
  * The agent has 22 tools (21 custom + 1 Anthropic server tool) organized
- * into 7 functional groups. This file exposes display metadata for each
+ * into 8 functional groups. This file exposes display metadata for each
  * one so the admin UI can render a grid of tool cards grouped by
  * category, with human-readable descriptions and toggle buttons.
  *

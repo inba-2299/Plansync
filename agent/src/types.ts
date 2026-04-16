@@ -1,3 +1,5 @@
+// SYNC NOTE: Frontend mirror at frontend/lib/event-types.ts — update both when changing shared shapes
+//
 // Shared types used across the agent backend.
 //
 // Kept in one file (rather than /shared) because the agent is TypeScript
@@ -54,7 +56,7 @@ export interface Plan {
 // ---------- Id map (tempId -> real Rocketlane id after creation) ----------
 
 export interface IdMapEntry {
-  type: 'project' | 'phase' | 'task';
+  type: 'project' | 'phase' | 'task' | 'subtask' | 'milestone';
   rlId: number;
   tempId: string;
   parentTempId: string | null;
@@ -109,7 +111,6 @@ export type AgentEvent =
 
 export interface SessionMeta {
   sessionId: string;
-  status: string; // 'new' | 'active' | 'awaiting_user' | 'done' | 'error'
   createdAt: number;
   ttlAt: number;
   turnCount: number;

@@ -70,7 +70,6 @@ export function newSession(sessionId: string): Session {
   return {
     meta: {
       sessionId,
-      status: 'new',
       createdAt: now,
       ttlAt: now + SESSION_TTL_SECONDS * 1000,
       turnCount: 0,
@@ -116,13 +115,15 @@ export async function loadSession(sessionId: string): Promise<Session> {
 
   return {
     meta: parseMeta(meta),
-    history: (history ?? []).map((s) =>
-      typeof s === 'string' ? (JSON.parse(s) as AnthropicMessage) : (s as AnthropicMessage)
-    ),
+    history: (history ?? []).map((s) => {
+      try { return typeof s === 'string' ? JSON.parse(s) as AnthropicMessage : s as AnthropicMessage; }
+      catch { console.error('[loadSession] Corrupted history entry, skipping'); return null; }
+    }).filter(Boolean) as AnthropicMessage[],
     idmap: parseIdMap(idmap ?? {}),
-    execlog: (execlog ?? []).map((s) =>
-      typeof s === 'string' ? (JSON.parse(s) as ExecLogEntry) : (s as ExecLogEntry)
-    ),
+    execlog: (execlog ?? []).map((s) => {
+      try { return typeof s === 'string' ? JSON.parse(s) as ExecLogEntry : s as ExecLogEntry; }
+      catch { console.error('[loadSession] Corrupted execlog entry, skipping'); return null; }
+    }).filter(Boolean) as ExecLogEntry[],
     remember: parseRemember(remember ?? {}),
     journey: parseJourney(journey ?? {}),
     pending: parsePending(pending ?? {}),
@@ -216,7 +217,13 @@ export async function saveSession(
     pipe.hset(key.pending(sessionId), hash);
   }
 
-  await pipe.exec();
+  const results = await pipe.exec();
+  const pipeErrors = results?.filter(
+    (r) => Array.isArray(r) && r[0] !== null
+  );
+  if (pipeErrors && pipeErrors.length > 0) {
+    console.error(`[saveSession] Redis pipeline errors for ${sessionId}:`, pipeErrors);
+  }
   await touchSessionTtl(sessionId);
 }
 
@@ -225,7 +232,6 @@ export async function saveSession(
 function parseMeta(raw: Record<string, unknown>): SessionMeta {
   return {
     sessionId: String(raw.sessionId ?? ''),
-    status: String(raw.status ?? 'new'),
     createdAt: Number(raw.createdAt ?? Date.now()),
     ttlAt: Number(raw.ttlAt ?? Date.now() + SESSION_TTL_SECONDS * 1000),
     turnCount: Number(raw.turnCount ?? 0),
@@ -244,7 +250,6 @@ function parseMeta(raw: Record<string, unknown>): SessionMeta {
 function flattenMeta(meta: SessionMeta): Record<string, string | number> {
   const out: Record<string, string | number> = {
     sessionId: meta.sessionId,
-    status: meta.status,
     createdAt: meta.createdAt,
     ttlAt: meta.ttlAt,
     turnCount: meta.turnCount,
