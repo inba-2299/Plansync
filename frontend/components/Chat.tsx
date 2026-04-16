@@ -1109,13 +1109,13 @@ export function Chat() {
   const awaitingUnanswered = userMessages.some(
     (m) => m.kind === 'awaiting' && !m.answered
   );
-  const inputDisabled = streaming || awaitingUnanswered || uploading;
+  const inputDisabled = streaming || uploading;
   const placeholder = uploading
     ? 'Uploading file…'
     : streaming
     ? 'Agent is working — please wait…'
     : awaitingUnanswered
-    ? 'Please use the options above to continue…'
+    ? 'Pick an option above, or type your answer here…'
     : 'Message Plansync agent…';
 
   // ---------- Render ----------

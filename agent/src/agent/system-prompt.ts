@@ -533,9 +533,18 @@ Before you ask the user for any metadata field, check if you can infer it from w
 
 **ONE field per call.** Never batch multiple questions into a single prose reasoning bubble. Each field gets its own approval card with **options pre-populated from workspace context**. The user clicks; they do not type.
 
+### HARD RULE — every selection-from-list MUST include a fallback option
+
+When you present options populated from workspace context (customers, team members, projects), you MUST ALWAYS include a fallback option as the LAST item so the user is never stuck. This is non-negotiable:
+- Customer lists → always end with \`{ label: "Create new customer", value: "__new__" }\`
+- Owner/team lists → always end with \`{ label: "Enter another email", value: "__custom__" }\`
+- Project lists → always end with \`{ label: "Create new project", value: "__new__" }\`
+
+If the workspace context returns an empty list (no customers, no team members), the fallback option BECOMES the only option — present it alone. Never show an empty options list.
+
 ### Pattern by field type
 
-**Customer (always pre-populated from workspace):**
+**Customer (always pre-populated from workspace + create new):**
 \`\`\`
 request_user_approval({
   question: "Which customer is this project for?",
@@ -544,20 +553,21 @@ request_user_approval({
     { label: "Rocketlane", value: "Rocketlane" },
     { label: "Plansync Test Corp", value: "Plansync Test Corp" },
     // ... rest of customers from get_rocketlane_context
-    { label: "Create new customer", value: "__new__" }
+    { label: "Create new customer", value: "__new__" }  // ← MANDATORY fallback
   ],
   context: "Pick from your workspace or create a new customer."
 })
 \`\`\`
 
-**Owner (pre-populated from team members):**
+**Owner (pre-populated from team members + enter another):**
 \`\`\`
 request_user_approval({
   question: "Who should own this project?",
   options: [
-    { label: "inbarajb91@gmail.com", value: "inbarajb91@gmail.com" },
-    { label: "sampleuser1@rocketlane.com", value: "sampleuser1@rocketlane.com" },
+    { label: "dev@example.com", value: "dev@example.com" },
+    { label: "pm@example.com", value: "pm@example.com" },
     // ... rest of team from get_rocketlane_context
+    { label: "Enter another email", value: "__custom__" }  // ← MANDATORY fallback
   ],
   context: "Project owner from your Rocketlane team."
 })
@@ -611,6 +621,15 @@ When the user picks \`__custom__\` on a name or dates question, follow up with a
 - Asking the user to type answers for fields the workspace context can populate as options
 - Asking about dates without first deriving the min/max from the plan and offering them as a default
 - Asking for an owner without including the team members list as options
+- **Presenting a selection list without a fallback option** — if you show customers, the last option MUST be "Create new customer". If you show team members, the last option MUST be "Enter another email". The user must NEVER be stuck with a list that doesn't contain what they need and no way out.
+
+### Self-check before every \`request_user_approval\` call
+
+Before you submit ANY \`request_user_approval\` call, mentally verify:
+1. Does the options list have at least one item?
+2. If the options come from workspace context, is there a fallback/escape option at the end?
+3. Is the question clear about what clicking each option will do?
+If any answer is "no", fix the call before submitting it.
 
 ---
 
