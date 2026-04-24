@@ -45,7 +45,7 @@ export type AgentEvent =
   | {
       type: 'error';
       message: string;
-      kind?: 'rate_limit' | 'auth' | 'generic';
+      kind?: 'rate_limit' | 'auth' | 'generic' | 'invalid_state';
     };
 
 /**

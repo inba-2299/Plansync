@@ -106,7 +106,7 @@ type UiMessage =
       selectedLabel?: string;
       createdAt: number;
     }
-  | { kind: 'error'; id: string; message: string; createdAt: number };
+  | { kind: 'error'; id: string; message: string; errorKind?: 'rate_limit' | 'auth' | 'generic' | 'invalid_state'; createdAt: number };
 
 // ---------- Message classification for split layout ----------
 
@@ -555,6 +555,7 @@ export function Chat() {
             kind: 'error',
             id: `err-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             message: event.message,
+            errorKind: event.kind,
             createdAt: Date.now(),
           });
           setStreaming(false);
@@ -1081,27 +1082,75 @@ export function Chat() {
             />
           );
 
-        case 'error':
+        case 'error': {
+          // Map error kind to a title + icon + suggested action
+          const errorKind = msg.errorKind ?? 'generic';
+          const errorMeta = {
+            rate_limit: { title: 'Rate limit reached', icon: 'hourglass_top', suggest: 'wait' },
+            auth: { title: 'Authentication issue', icon: 'key_off', suggest: 'check_key' },
+            invalid_state: { title: 'Conversation state error', icon: 'sync_problem', suggest: 'new_session' },
+            generic: { title: 'Something went wrong', icon: 'error', suggest: 'retry' },
+          }[errorKind];
+
           return (
             <div
               key={msg.id}
-              className="bg-error-container/30 border border-error/20 rounded-2xl p-4 text-on-error-container"
+              className="bg-error-container/30 border border-error/30 rounded-2xl p-5 shadow-card-sm"
             >
               <div className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-error">error</span>
-                <div className="flex-1">
-                  <div className="font-semibold text-error mb-1">Error</div>
-                  <div className="text-sm">{msg.message}</div>
+                <div className="w-10 h-10 rounded-xl bg-error/10 flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-error text-xl">{errorMeta.icon}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-headline font-bold text-sm text-error mb-1">{errorMeta.title}</div>
+                  <div className="text-xs text-on-surface leading-relaxed">{msg.message}</div>
+                  {errorMeta.suggest === 'new_session' && (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleNewSession}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-error text-on-error text-xs font-semibold hover:bg-error/90 transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-sm">refresh</span>
+                        Start New Session
+                      </button>
+                    </div>
+                  )}
+                  {errorMeta.suggest === 'check_key' && (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleNewSession}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-primary text-on-primary text-xs font-semibold hover:bg-primary-container transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-sm">refresh</span>
+                        Start New Session
+                      </button>
+                    </div>
+                  )}
+                  {errorMeta.suggest === 'retry' && (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleNewSession}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-outline-variant/40 text-on-surface-variant text-xs font-semibold hover:bg-surface-container-high transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-sm">refresh</span>
+                        Start New Session
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           );
+        }
 
         default:
           return null;
       }
     },
-    [sessionId, updateMessage, handleApiKeySubmit, handleFileUploaded, handleApprovalClick]
+    [sessionId, updateMessage, handleApiKeySubmit, handleFileUploaded, handleApprovalClick, handleNewSession]
   );
 
   // ---------- Input state ----------

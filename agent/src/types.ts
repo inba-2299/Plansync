@@ -104,7 +104,7 @@ export type AgentEvent =
       // card (e.g. 'rate_limit' → show "wait + retry" guidance with a
       // "Start new session" escape hatch; 'auth' → prompt for a new API
       // key; 'generic' → default red banner).
-      kind?: 'rate_limit' | 'auth' | 'generic';
+      kind?: 'rate_limit' | 'auth' | 'generic' | 'invalid_state';
     };
 
 // ---------- Session state ----------

@@ -315,10 +315,37 @@ app.post('/agent', async (req: Request, res: Response) => {
 
     // Inject user input into history
     if (userMessage) {
-      session.history.push({
-        role: 'user',
-        content: userMessage,
-      });
+      // FIX: If there's a pending approval AND the user typed free-text
+      // (instead of clicking an option), treat the typed text as the
+      // answer to that approval. This preserves the Anthropic contract
+      // that every tool_use must have a matching tool_result in the very
+      // next message — without this, the orphaned tool_use causes a
+      // 400 invalid_request_error on the next agent turn.
+      if (session.pending && session.pending.toolUseId) {
+        const toolResultBlock: AnthropicContentBlock = {
+          type: 'tool_result',
+          tool_use_id: session.pending.toolUseId,
+          content: `User typed a custom answer: "${userMessage}"`,
+        };
+
+        // Prepend any stashed tool_results from non-blocking tools that
+        // ran BEFORE the request_user_approval in the same assistant turn.
+        const stashed = session.pendingToolResults ?? [];
+        session.history.push({
+          role: 'user',
+          content: [...stashed, toolResultBlock],
+        });
+
+        // Clear pending state after consuming
+        session.pending = null;
+        session.pendingToolResults = null;
+      } else {
+        // Normal user message — no pending approval
+        session.history.push({
+          role: 'user',
+          content: userMessage,
+        });
+      }
     }
 
     if (uiAction) {

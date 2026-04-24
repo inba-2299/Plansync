@@ -258,10 +258,29 @@ export async function runAgentLoop(
           continue; // retry the stream
         }
 
+        // Auto-repair orphaned tool_use. Walk the history, find any tool_use
+        // blocks that aren't followed by a matching tool_result, and inject
+        // synthetic tool_result blocks saying the user abandoned that step.
+        // This unblocks the session so the agent can continue.
+        if (classified.kind === 'invalid_state') {
+          const repairedCount = repairOrphanedToolUses(session.history);
+          if (repairedCount > 0) {
+            console.warn(`[loop] Repaired ${repairedCount} orphaned tool_use block(s)`);
+            continue; // retry the stream with the repaired history
+          }
+          // Couldn't find the orphan — surface a friendly error
+          emit({
+            type: 'error',
+            message: 'The conversation reached an invalid state we could not auto-repair. Please start a new session.',
+            kind: 'generic',
+          });
+          return { outcome: 'error', error: 'invalid_state_unrepairable' };
+        }
+
         // Unrecoverable (out of retries or non-429 error)
         emit({
           type: 'error',
-          message: `Anthropic API error: ${classified.message}`,
+          message: cleanErrorMessage(classified.kind, classified.message),
           kind: classified.kind,
         });
         return { outcome: 'error', error: classified.message };
@@ -397,10 +416,12 @@ export async function runAgentLoop(
 // ---------- error classification + retry helpers ----------
 
 interface ClassifiedError {
-  kind: 'rate_limit' | 'auth' | 'generic';
+  kind: 'rate_limit' | 'auth' | 'generic' | 'invalid_state';
   message: string;
   /** Seconds to wait before retrying (from Retry-After header), if known */
   retryAfterSeconds?: number;
+  /** For invalid_state errors — the orphaned tool_use_id if parseable */
+  orphanedToolUseId?: string;
 }
 
 /**
@@ -422,6 +443,21 @@ function classifyAnthropicError(err: any): ClassifiedError {
     /rate[_ ]?limit/i.test(message) ||
     /429/.test(message);
   const isAuth = status === 401 || /auth|api[_ ]?key|unauthorized/i.test(message);
+
+  // Detect "orphaned tool_use" invalid_state errors. Anthropic returns a 400
+  // with a message like "messages.26: `tool_use` ids were found without
+  // `tool_result` blocks immediately after: toolu_01DbRw..."
+  // We can auto-repair this by synthesizing a tool_result for the orphan.
+  const isInvalidState =
+    status === 400 && /tool_use.*ids.*without.*tool_result/i.test(message);
+  if (isInvalidState) {
+    const match = message.match(/toolu_[A-Za-z0-9]+/);
+    return {
+      kind: 'invalid_state',
+      message,
+      orphanedToolUseId: match ? match[0] : undefined,
+    };
+  }
 
   if (isRateLimit) {
     // Try to pull Retry-After from the error's response headers
@@ -451,6 +487,108 @@ function classifyAnthropicError(err: any): ClassifiedError {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Convert a raw Anthropic error message into something friendly to show
+ * the user. Strips JSON blobs, request IDs, and long technical details.
+ * Returns a short human-readable sentence appropriate for a red error card.
+ */
+function cleanErrorMessage(
+  kind: 'rate_limit' | 'auth' | 'generic' | 'invalid_state',
+  raw: string
+): string {
+  switch (kind) {
+    case 'rate_limit':
+      return 'Anthropic rate limit reached. The agent tried to retry but hit the cap. Please wait a minute and try again.';
+    case 'auth':
+      return 'The Anthropic API key is invalid or missing. Please check the key in Settings and try again.';
+    case 'invalid_state':
+      return 'The conversation reached an invalid state. This usually happens after a deploy during an active session. Please start a new session to continue.';
+    case 'generic':
+    default: {
+      // Try to extract a friendly nested message from Anthropic's JSON response
+      const match = raw.match(/"message":\s*"([^"]+)"/);
+      if (match && match[1]) {
+        return `The AI model returned an error: ${match[1]}. Try again, or start a new session if the problem persists.`;
+      }
+      // Otherwise, return the first line (without any JSON blob) up to 200 chars
+      const firstLine = raw.split('\n')[0].replace(/\{.*\}/g, '').trim();
+      return firstLine.slice(0, 200) || 'An unexpected error occurred. Please try again or start a new session.';
+    }
+  }
+}
+
+/**
+ * Walk the conversation history and find any tool_use blocks that don't
+ * have a matching tool_result block in the very next user message.
+ * For each orphan, inject a synthetic tool_result saying the user
+ * abandoned that step. Mutates the history in place.
+ *
+ * Returns the count of repairs made.
+ *
+ * This unblocks broken sessions where a tool_use was emitted but the
+ * corresponding tool_result never came back — typically because the user
+ * typed a message instead of clicking an approval option before we fixed
+ * that path. Without this repair, every subsequent agent turn fails with
+ * a 400 invalid_request_error.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function repairOrphanedToolUses(history: any[]): number {
+  let repairs = 0;
+
+  for (let i = 0; i < history.length; i++) {
+    const msg = history[i];
+    if (msg.role !== 'assistant' || !Array.isArray(msg.content)) continue;
+
+    // Collect tool_use IDs in this assistant message
+    const toolUseIds: string[] = [];
+    for (const block of msg.content) {
+      if (block && typeof block === 'object' && block.type === 'tool_use' && typeof block.id === 'string') {
+        toolUseIds.push(block.id);
+      }
+    }
+    if (toolUseIds.length === 0) continue;
+
+    // Find the next user message (should contain tool_results)
+    const nextUserIdx = history.findIndex((m, idx) => idx > i && m.role === 'user');
+    const nextUser = nextUserIdx >= 0 ? history[nextUserIdx] : null;
+
+    // Collect tool_result IDs in the next user message
+    const existingResultIds = new Set<string>();
+    if (nextUser && Array.isArray(nextUser.content)) {
+      for (const block of nextUser.content) {
+        if (block && typeof block === 'object' && block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
+          existingResultIds.add(block.tool_use_id);
+        }
+      }
+    }
+
+    // For each tool_use without a matching tool_result, synthesize one
+    const orphans = toolUseIds.filter((id) => !existingResultIds.has(id));
+    if (orphans.length === 0) continue;
+
+    const synthetic = orphans.map((id) => ({
+      type: 'tool_result' as const,
+      tool_use_id: id,
+      content: 'User did not respond to this action. Abandoning this step and continuing.',
+    }));
+
+    if (nextUser && Array.isArray(nextUser.content)) {
+      // Append to existing next-user content
+      nextUser.content = [...nextUser.content, ...synthetic];
+    } else if (nextUser && typeof nextUser.content === 'string') {
+      // Next user was a plain string — promote to array and prepend synthetic
+      nextUser.content = [...synthetic, { type: 'text', text: nextUser.content }];
+    } else {
+      // No next user message — insert a new user message with the synthetic results
+      history.splice(i + 1, 0, { role: 'user', content: synthetic });
+    }
+
+    repairs += orphans.length;
+  }
+
+  return repairs;
 }
 
 // ---------- stream event forwarder ----------

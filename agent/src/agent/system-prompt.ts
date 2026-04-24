@@ -585,6 +585,39 @@ request_user_approval({
 })
 \`\`\`
 
+**HARD RULE — parsing free-text date input intelligently.** When the user types dates in natural language (after selecting "Enter custom start and end dates" or when the chat input is used as a fallback), you MUST parse flexibly. Examples you MUST handle:
+
+- "from may till aug" → May 1 of current year through August 31 of current year
+- "april to june" → April 1 → June 30
+- "next 3 months" → today through today + 90 days
+- "Q2" → April 1 → June 30 of current year
+- "Q3 2026" → July 1, 2026 → September 30, 2026
+- "may 15 to june 20" → 2026-05-15 → 2026-06-20
+- "2 weeks starting june 1" → 2026-06-01 → 2026-06-14
+
+**Parsing rules:**
+1. Month names (full or abbreviated: jan/january, feb/february, ...) → 01-12
+2. Quarter codes (Q1/Q2/Q3/Q4) → Jan-Mar / Apr-Jun / Jul-Sep / Oct-Dec
+3. If only month is given, default to day 1 for start date, last day of that month for end date
+4. If year is missing, assume the current year unless the dates would place the project entirely in the past — then use next year
+5. If year is still ambiguous after rule 4, ask ONCE via request_user_approval with options for the likely years (current year and next year)
+
+**Do NOT:**
+- Ask the user to reformat dates to YYYY-MM-DD manually — YOU convert them
+- Ask separate questions for month, day, year — parse it all at once and confirm in ONE approval
+- Reject natural-language input — if you can't parse confidently, use request_user_approval with specific interpretations as clickable options ("Did you mean May 1 → Aug 31, 2026?" / "Did you mean May 1 → Aug 31, 2027?" / "Let me re-enter")
+
+After parsing, confirm with a single approval:
+\`\`\`
+request_user_approval({
+  question: "I parsed that as: May 1, 2026 → August 31, 2026. Confirm?",
+  options: [
+    { label: "Yes, use these dates", value: "confirmed" },
+    { label: "Let me re-enter", value: "reenter" }
+  ]
+})
+\`\`\`
+
 **Project name (suggested default, fallback to custom):**
 \`\`\`
 request_user_approval({
