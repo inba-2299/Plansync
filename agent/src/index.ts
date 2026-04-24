@@ -362,13 +362,35 @@ app.post('/agent', async (req: Request, res: Response) => {
         session.pending && session.pending.toolUseId === uiAction.toolUseId;
 
       if (isCurrentPending) {
-        // Normal path — click matches the pending approval
+        // Normal path — click matches the pending approval.
+        //
+        // Format the tool_result content so the agent gets the most useful
+        // representation:
+        //   - For simple option clicks (label = value or no data): just the
+        //     label ("User selected: Acme Corp")
+        //   - For rich uiActions (file uploads, approvals with structured
+        //     data like artifactId, rl ids, etc.): pass the data as primary
+        //     content so the agent doesn't have to parse a nested value.
+        //
+        // Rich vs. simple is determined by whether the data carries more
+        // information than the label (length, or explicit non-string data).
+        const label = uiAction.label ?? '';
+        const hasRichContent =
+          typeof uiAction.data !== 'string' ||
+          (label && resultContent.length > label.length * 1.5);
+
+        const content = hasRichContent
+          ? // For rich actions, give the agent the full structured content
+            // verbatim. The "User action:" prefix tells the agent this came
+            // from a UI interaction (not a free-text reply) so it reads the
+            // payload literally rather than paraphrasing.
+            `User action: ${label ? `"${label}"` : 'submitted'}. Full payload: ${resultContent}`
+          : `User selected: ${label || resultContent}`;
+
         const toolResultBlock: AnthropicContentBlock = {
           type: 'tool_result',
           tool_use_id: uiAction.toolUseId,
-          content: `User selected: ${uiAction.label ?? resultContent}${
-            uiAction.label && resultContent !== uiAction.label ? ` (value: ${resultContent})` : ''
-          }`,
+          content,
         };
         const stashed = session.pendingToolResults ?? [];
         session.history.push({
@@ -380,17 +402,23 @@ app.post('/agent', async (req: Request, res: Response) => {
       } else {
         // Stale click — this toolUseId is already answered (or doesn't
         // match current pending). Treat it as a plain user text message
-        // so the agent can respond contextually. validateAndRepairHistory
-        // in the loop will clean up any remaining inconsistencies.
-        const label = uiAction.label ?? resultContent;
+        // so the agent can respond contextually. Include the full payload
+        // (not just the label) so any structured info like artifact IDs
+        // is preserved and the agent has everything it needs to act.
+        const label = uiAction.label ?? '';
+        const payload =
+          typeof uiAction.data !== 'string' ||
+          (label && resultContent.length > label.length * 1.5)
+            ? `${label ? `"${label}" — ` : ''}${resultContent}`
+            : label || resultContent;
         session.history.push({
           role: 'user',
-          content: `(User clicked "${label}" on an earlier card — treat as a free-text message: the user may want to revisit that decision or change their mind.)`,
+          content: `(The user interacted with an earlier card: ${payload}. Treat this as if they typed it as a free-text message — they may want to revisit a decision, provide new info, or continue from here.)`,
         });
         console.warn(
           `[agent route] Stale uiAction for toolUseId=${uiAction.toolUseId}; pending=${
             session.pending?.toolUseId ?? 'null'
-          }. Converted to text message.`
+          }. Converted to text message with full payload preserved.`
         );
       }
     }
