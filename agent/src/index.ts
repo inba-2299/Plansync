@@ -349,35 +349,50 @@ app.post('/agent', async (req: Request, res: Response) => {
     }
 
     if (uiAction) {
-      // Inject as a tool_result for the pending approval
       const resultContent =
         typeof uiAction.data === 'string'
           ? uiAction.data
           : JSON.stringify(uiAction.data);
 
-      const toolResultBlock: AnthropicContentBlock = {
-        type: 'tool_result',
-        tool_use_id: uiAction.toolUseId,
-        content: `User selected: ${uiAction.label ?? resultContent}${
-          uiAction.label && resultContent !== uiAction.label ? ` (value: ${resultContent})` : ''
-        }`,
-      };
+      // Check: is this click for the CURRENT pending approval, or a stale
+      // click on an already-answered card? The frontend should prevent
+      // stale clicks, but if it doesn't we must not synthesize a duplicate
+      // tool_result — that would orphan against the history.
+      const isCurrentPending =
+        session.pending && session.pending.toolUseId === uiAction.toolUseId;
 
-      // Prepend any stashed tool_results from non-blocking tools that
-      // ran BEFORE the request_user_approval in the same assistant turn.
-      // See the big comment in agent/loop.ts where `pendingToolResults`
-      // is populated. This is what prevents the Anthropic 400 error
-      // "tool_use ids were found without tool_result blocks immediately
-      // after".
-      const stashed = session.pendingToolResults ?? [];
-      session.history.push({
-        role: 'user',
-        content: [...stashed, toolResultBlock],
-      });
-
-      // Clear pending state after consuming
-      session.pending = null;
-      session.pendingToolResults = null;
+      if (isCurrentPending) {
+        // Normal path — click matches the pending approval
+        const toolResultBlock: AnthropicContentBlock = {
+          type: 'tool_result',
+          tool_use_id: uiAction.toolUseId,
+          content: `User selected: ${uiAction.label ?? resultContent}${
+            uiAction.label && resultContent !== uiAction.label ? ` (value: ${resultContent})` : ''
+          }`,
+        };
+        const stashed = session.pendingToolResults ?? [];
+        session.history.push({
+          role: 'user',
+          content: [...stashed, toolResultBlock],
+        });
+        session.pending = null;
+        session.pendingToolResults = null;
+      } else {
+        // Stale click — this toolUseId is already answered (or doesn't
+        // match current pending). Treat it as a plain user text message
+        // so the agent can respond contextually. validateAndRepairHistory
+        // in the loop will clean up any remaining inconsistencies.
+        const label = uiAction.label ?? resultContent;
+        session.history.push({
+          role: 'user',
+          content: `(User clicked "${label}" on an earlier card — treat as a free-text message: the user may want to revisit that decision or change their mind.)`,
+        });
+        console.warn(
+          `[agent route] Stale uiAction for toolUseId=${uiAction.toolUseId}; pending=${
+            session.pending?.toolUseId ?? 'null'
+          }. Converted to text message.`
+        );
+      }
     }
 
     // Run the ReAct loop

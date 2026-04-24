@@ -4,6 +4,7 @@ import type { Session, PendingApproval } from '../memory/session';
 import { RocketlaneClient } from '../rocketlane/client';
 import { decrypt } from '../lib/crypto';
 import { SYSTEM_PROMPT } from './system-prompt';
+import { validateAndRepairHistory } from './history-integrity';
 import { dispatch, TOOL_SCHEMAS } from '../tools';
 import {
   getEffectiveModel,
@@ -143,6 +144,22 @@ export async function runAgentLoop(
       getRlClient,
     };
 
+    // ---------- History integrity check (proactive self-heal) ----------
+    //
+    // Walk the conversation history and repair any violations of Anthropic's
+    // tool_use/tool_result invariants before we send the request. This
+    // converts a whole class of 400 errors (orphaned tool_use, orphaned
+    // tool_result, duplicates) into silent, logged repairs. Sessions
+    // continue instead of dying.
+    const integrity = validateAndRepairHistory(session.history);
+    if (!integrity.valid) {
+      for (const repair of integrity.repairs) {
+        console.warn(
+          `[loop] History repair: ${repair.kind} toolUseId=${repair.toolUseId} reason="${repair.reason}"`
+        );
+      }
+    }
+
     // ---------- Stream the turn (with 429 retry) ----------
 
     let finalMessage:
@@ -183,6 +200,19 @@ export async function runAgentLoop(
         : t
     );
 
+    // Append Anthropic's web_search server tool. This is a server-side tool
+    // Anthropic manages — we don't implement it, Claude can invoke it to
+    // search the web at runtime. Critical for runtime API docs recovery
+    // when Rocketlane behavior diverges from what's in the system prompt.
+    // Kept out of the cached portion so cache_control stays on the last
+    // custom tool. The web_search tool is tiny so the extra tokens don't
+    // matter.
+    const toolsWithWebSearch = [
+      ...toolsWithCache,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { type: 'web_search_20250305', name: 'web_search', max_uses: 5 } as any,
+    ];
+
     while (!streamSucceeded) {
       try {
         const stream = anthropic.messages.stream({
@@ -203,7 +233,7 @@ export async function runAgentLoop(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           messages: session.history as any,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          tools: toolsWithCache as any,
+          tools: toolsWithWebSearch as any,
         });
 
         const streamState: { currentToolUseId: string | null } = { currentToolUseId: null };
@@ -256,25 +286,6 @@ export async function runAgentLoop(
           });
           await sleep(waitSeconds * 1000);
           continue; // retry the stream
-        }
-
-        // Auto-repair orphaned tool_use. Walk the history, find any tool_use
-        // blocks that aren't followed by a matching tool_result, and inject
-        // synthetic tool_result blocks saying the user abandoned that step.
-        // This unblocks the session so the agent can continue.
-        if (classified.kind === 'invalid_state') {
-          const repairedCount = repairOrphanedToolUses(session.history);
-          if (repairedCount > 0) {
-            console.warn(`[loop] Repaired ${repairedCount} orphaned tool_use block(s)`);
-            continue; // retry the stream with the repaired history
-          }
-          // Couldn't find the orphan — surface a friendly error
-          emit({
-            type: 'error',
-            message: 'The conversation reached an invalid state we could not auto-repair. Please start a new session.',
-            kind: 'generic',
-          });
-          return { outcome: 'error', error: 'invalid_state_unrepairable' };
         }
 
         // Unrecoverable (out of retries or non-429 error)
@@ -444,20 +455,10 @@ function classifyAnthropicError(err: any): ClassifiedError {
     /429/.test(message);
   const isAuth = status === 401 || /auth|api[_ ]?key|unauthorized/i.test(message);
 
-  // Detect "orphaned tool_use" invalid_state errors. Anthropic returns a 400
-  // with a message like "messages.26: `tool_use` ids were found without
-  // `tool_result` blocks immediately after: toolu_01DbRw..."
-  // We can auto-repair this by synthesizing a tool_result for the orphan.
-  const isInvalidState =
-    status === 400 && /tool_use.*ids.*without.*tool_result/i.test(message);
-  if (isInvalidState) {
-    const match = message.match(/toolu_[A-Za-z0-9]+/);
-    return {
-      kind: 'invalid_state',
-      message,
-      orphanedToolUseId: match ? match[0] : undefined,
-    };
-  }
+  // Note: we don't detect invalid_state errors by string matching here.
+  // Instead, we proactively validate + repair history integrity BEFORE every
+  // Anthropic call via validateAndRepairHistory(). If a 400 still reaches
+  // this point it means something broader is wrong; fall through to generic.
 
   if (isRateLimit) {
     // Try to pull Retry-After from the error's response headers
@@ -519,77 +520,6 @@ function cleanErrorMessage(
   }
 }
 
-/**
- * Walk the conversation history and find any tool_use blocks that don't
- * have a matching tool_result block in the very next user message.
- * For each orphan, inject a synthetic tool_result saying the user
- * abandoned that step. Mutates the history in place.
- *
- * Returns the count of repairs made.
- *
- * This unblocks broken sessions where a tool_use was emitted but the
- * corresponding tool_result never came back — typically because the user
- * typed a message instead of clicking an approval option before we fixed
- * that path. Without this repair, every subsequent agent turn fails with
- * a 400 invalid_request_error.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function repairOrphanedToolUses(history: any[]): number {
-  let repairs = 0;
-
-  for (let i = 0; i < history.length; i++) {
-    const msg = history[i];
-    if (msg.role !== 'assistant' || !Array.isArray(msg.content)) continue;
-
-    // Collect tool_use IDs in this assistant message
-    const toolUseIds: string[] = [];
-    for (const block of msg.content) {
-      if (block && typeof block === 'object' && block.type === 'tool_use' && typeof block.id === 'string') {
-        toolUseIds.push(block.id);
-      }
-    }
-    if (toolUseIds.length === 0) continue;
-
-    // Find the next user message (should contain tool_results)
-    const nextUserIdx = history.findIndex((m, idx) => idx > i && m.role === 'user');
-    const nextUser = nextUserIdx >= 0 ? history[nextUserIdx] : null;
-
-    // Collect tool_result IDs in the next user message
-    const existingResultIds = new Set<string>();
-    if (nextUser && Array.isArray(nextUser.content)) {
-      for (const block of nextUser.content) {
-        if (block && typeof block === 'object' && block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
-          existingResultIds.add(block.tool_use_id);
-        }
-      }
-    }
-
-    // For each tool_use without a matching tool_result, synthesize one
-    const orphans = toolUseIds.filter((id) => !existingResultIds.has(id));
-    if (orphans.length === 0) continue;
-
-    const synthetic = orphans.map((id) => ({
-      type: 'tool_result' as const,
-      tool_use_id: id,
-      content: 'User did not respond to this action. Abandoning this step and continuing.',
-    }));
-
-    if (nextUser && Array.isArray(nextUser.content)) {
-      // Append to existing next-user content
-      nextUser.content = [...nextUser.content, ...synthetic];
-    } else if (nextUser && typeof nextUser.content === 'string') {
-      // Next user was a plain string — promote to array and prepend synthetic
-      nextUser.content = [...synthetic, { type: 'text', text: nextUser.content }];
-    } else {
-      // No next user message — insert a new user message with the synthetic results
-      history.splice(i + 1, 0, { role: 'user', content: synthetic });
-    }
-
-    repairs += orphans.length;
-  }
-
-  return repairs;
-}
 
 // ---------- stream event forwarder ----------
 
