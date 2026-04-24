@@ -515,7 +515,7 @@ export default function RLAssignmentPage() {
             <div className="flex flex-wrap items-center gap-2 text-xs font-medium">
               {[
                 { icon: 'article', label: 'System Prompt', sub: 'PM knowledge + API reference + rules', link: '/rlassignment/prompt' },
-                { icon: 'sync', label: 'ReAct Loop', sub: 'Reason \u2192 Act \u2192 Observe \u2192 Repeat' },
+                { icon: 'sync', label: 'ReAct Loop', sub: 'Reason → Act → Observe → Repeat' },
                 { icon: 'build', label: '22 Tools', sub: '7 groups by function' },
                 { icon: 'cloud', label: 'Rocketlane API', sub: 'Direct REST calls' },
               ].map((step: { icon: string; label: string; sub: string; link?: string }, i) => (
@@ -696,7 +696,7 @@ export default function RLAssignmentPage() {
               <ol className="space-y-3 flex-1">
                 {[
                   { step: 'Download', desc: 'Get plansync-custom-app.zip (199 KB) from the repo' },
-                  { step: 'Install', desc: 'Settings \u2192 Custom Apps \u2192 Upload the zip file' },
+                  { step: 'Install', desc: 'Settings → Custom Apps → Upload the zip file' },
                   { step: 'Use', desc: 'Open "Plansync" from the left nav or any project tab' },
                 ].map((s, i) => (
                   <li key={s.step} className="flex items-start gap-3">

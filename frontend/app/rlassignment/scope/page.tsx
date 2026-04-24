@@ -72,7 +72,7 @@ const SHIPPED = [
       { name: 'Split workspace layout', desc: 'User inputs on the left (40%), agent reasoning on the right (60%). Pinned execution plan + progress feed at the top of the agent column.' },
       { name: '14 agent-emitted components', desc: 'JourneyStepper, ExecutionPlanCard, PlanReviewTree, PlanIntegrityPanel, ApprovalPrompt, ApiKeyCard, FileUploadCard, ProgressFeed, ReflectionCard, CompletionCard, and more.' },
       { name: 'Refresh-safe sessions', desc: 'Every SSE event persisted to Redis. Browser refresh replays the full session — reasoning, cards, approvals, journey state all restored.' },
-      { name: 'Agent-driven journey stepper', desc: 'Connect \u2192 Upload \u2192 Analyze \u2192 Approve \u2192 Execute \u2192 Complete. Driven by the agent calling update_journey_state, not by a backend state machine.' },
+      { name: 'Agent-driven journey stepper', desc: 'Connect → Upload → Analyze → Approve → Execute → Complete. Driven by the agent calling update_journey_state, not by a backend state machine.' },
       { name: 'Interactive approvals', desc: 'Clickable option chips pre-populated from workspace context. One-click answers, not typed responses.' },
       { name: 'Error boundary', desc: 'Any component render crash shows a recoverable error card instead of a white page. Added after a production crash on Haiku-generated plans.' },
     ],

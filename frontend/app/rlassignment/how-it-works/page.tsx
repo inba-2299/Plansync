@@ -525,7 +525,7 @@ tool_result: "✓ PLAN VALID. 8 phases, 21 tasks. artifact:abc123"
 
 const SSE_STREAMING_STEPS = [
   {
-    label: 'Anthropic \u2192 Backend \u2192 Browser',
+    label: 'Anthropic → Backend → Browser',
     detail: 'Anthropic streams token-by-token. The backend receives each chunk, wraps it as an SSE event (data: JSON\\n\\n), and forwards it to the browser. Every event is also stored to Redis for replay on refresh.',
     visual: (
       <div className="space-y-3">
@@ -604,11 +604,11 @@ const VALIDATION_LOOP_STEPS = [
           { check: 'MISSING_NAME', desc: 'Item has no name/title' },
           { check: 'BROKEN_PARENT_REF', desc: 'parentId points to nonexistent item' },
           { check: 'ORPHAN', desc: 'Non-phase item with no parent' },
-          { check: 'CIRCULAR_DEP', desc: 'Dependency cycle detected (A \u2192 B \u2192 A)' },
+          { check: 'CIRCULAR_DEP', desc: 'Dependency cycle detected (A → B → A)' },
           { check: 'ROW_COUNT_MISMATCH', desc: 'Parsed items \u2260 CSV row count' },
           { check: 'BAD_DATE', desc: 'Start date after due date' },
           { check: 'BAD_EFFORT', desc: 'Negative or non-numeric effort value' },
-          { check: 'DEPTH_INCONSISTENCY', desc: 'Depth levels skip (1 \u2192 3, missing 2)' },
+          { check: 'DEPTH_INCONSISTENCY', desc: 'Depth levels skip (1 → 3, missing 2)' },
           { check: 'NON_PHASE_NO_PARENT', desc: 'Task/subtask not under any phase' },
           { check: 'DUPLICATE_ID', desc: 'Two items share the same ID' },
           { check: 'PHASE_DATES_MISSING', desc: 'Phase has no start/due date' },
@@ -628,10 +628,10 @@ const VALIDATION_LOOP_STEPS = [
       <div className="space-y-3">
         <FlowBox icon="build" label="validate_plan()" sub="Run 11 checks" color="primary" active />
         <Arrow />
-        <CodeSnippet code={`tool_result: "\u2717 PLAN INVALID \u2014 3 errors:
-  \u2022 [CIRCULAR_DEP] task-A \u2192 task-B \u2192 task-A
-  \u2022 [ORPHAN] task-7 has no parent phase
-  \u2022 [PHASE_DATES_MISSING] Phase 3 has no dates"`} />
+        <CodeSnippet code={`tool_result: "\u2717 PLAN INVALID — 3 errors:
+  • [CIRCULAR_DEP] task-A → task-B → task-A
+  • [ORPHAN] task-7 has no parent phase
+  • [PHASE_DATES_MISSING] Phase 3 has no dates"`} />
         <Arrow />
         <FlowBox icon="psychology" label="Agent reasons" sub="Fix circular dep, assign orphan, derive dates" color="tertiary" />
         <Arrow />
@@ -639,7 +639,7 @@ const VALIDATION_LOOP_STEPS = [
         <Arrow />
         <FlowBox icon="replay" label="validate_plan() again" sub="Re-run all 11 checks" color="primary" />
         <Arrow />
-        <FlowBox icon="check_circle" label="PLAN VALID" sub="0 errors \u2014 ready for execution" color="success" />
+        <FlowBox icon="check_circle" label="PLAN VALID" sub="0 errors — ready for execution" color="success" />
       </div>
     ),
   },
@@ -653,19 +653,19 @@ const VALIDATION_LOOP_STEPS = [
             <Icon name="auto_fix_high" className="text-sm" /> CAN fix autonomously
           </div>
           <div className="space-y-1 text-[10px] text-emerald-800">
-            <p>Missing phase dates \u2192 derive from child tasks&apos; min/max</p>
-            <p>Orphan items \u2192 group under synthetic phase</p>
-            <p>Date format normalization \u2192 detect and standardize</p>
-            <p>Duplicate ID resolution \u2192 append suffix</p>
+            <p>Missing phase dates → derive from child tasks&apos; min/max</p>
+            <p>Orphan items → group under synthetic phase</p>
+            <p>Date format normalization → detect and standardize</p>
+            <p>Duplicate ID resolution → append suffix</p>
           </div>
         </div>
         <div className="rounded-xl bg-rose-50 border border-rose-200 p-4">
           <div className="text-[10px] font-bold text-rose-700 mb-2 flex items-center gap-1.5">
-            <Icon name="front_hand" className="text-sm" /> CANNOT fix \u2192 asks the user
+            <Icon name="front_hand" className="text-sm" /> CANNOT fix → asks the user
           </div>
           <div className="space-y-1 text-[10px] text-rose-800">
-            <p>Ambiguous DD/MM dates \u2192 is 04/05 April 5 or May 4?</p>
-            <p>No detectable hierarchy at all \u2192 flat list, no phases</p>
+            <p>Ambiguous DD/MM dates → is 04/05 April 5 or May 4?</p>
+            <p>No detectable hierarchy at all → flat list, no phases</p>
             <p>Missing data that requires domain knowledge</p>
             <p>Contradictory instructions in the CSV</p>
           </div>
@@ -678,16 +678,16 @@ const VALIDATION_LOOP_STEPS = [
 const OBSERVABILITY_STEPS = [
   {
     label: 'Pre-computed counters, not derived stats',
-    detail: 'The v1 admin dashboard took 30 seconds because it SCANned every Redis session on every page load (~360 calls). v2 uses pre-computed counters: SADD on session start, SADD on completion, SADD on error. Dashboard reads 5 SCARD calls \u2192 200ms load.',
+    detail: 'The v1 admin dashboard took 30 seconds because it SCANned every Redis session on every page load (~360 calls). v2 uses pre-computed counters: SADD on session start, SADD on completion, SADD on error. Dashboard reads 5 SCARD calls → 200ms load.',
     visual: (
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-xl bg-rose-50 border border-rose-200 p-4">
             <div className="text-[10px] font-bold text-rose-700 mb-2">v1: SCAN on every load</div>
             <div className="space-y-1 text-[10px] text-rose-800">
-              <p>SCAN 0 MATCH session:* \u2192 ~120 keys</p>
-              <p>GET each key \u2192 ~120 calls</p>
-              <p>Filter by date \u2192 ~120 checks</p>
+              <p>SCAN 0 MATCH session:* → ~120 keys</p>
+              <p>GET each key → ~120 calls</p>
+              <p>Filter by date → ~120 checks</p>
               <p className="font-bold mt-2">~360 Redis calls, 30s load</p>
             </div>
           </div>
@@ -728,7 +728,7 @@ const OBSERVABILITY_STEPS = [
           ))}
         </div>
         <div className="rounded-lg bg-surface-container border border-outline-variant/15 px-3 py-2 text-[10px] text-on-surface-variant">
-          <strong>Daily usage breakdown:</strong> Input tokens, output tokens, cache read, cache write, estimated cost \u2014 grouped by model (Haiku vs Sonnet).
+          <strong>Daily usage breakdown:</strong> Input tokens, output tokens, cache read, cache write, estimated cost — grouped by model (Haiku vs Sonnet).
         </div>
       </div>
     ),
@@ -740,10 +740,10 @@ const OBSERVABILITY_STEPS = [
       <div className="space-y-3">
         <div className="space-y-1.5">
           {[
-            { key: 'model', value: 'claude-haiku-4-5 \u2192 claude-sonnet-4-5', desc: 'Switch to higher-capability model' },
-            { key: 'max_tokens', value: '4096 \u2192 8192', desc: 'Allow longer agent responses' },
-            { key: 'temperature', value: '0.3 \u2192 0.5', desc: 'More creative reasoning' },
-            { key: 'retry_cap', value: '3 \u2192 5', desc: 'More retries before giving up' },
+            { key: 'model', value: 'claude-haiku-4-5 → claude-sonnet-4-5', desc: 'Switch to higher-capability model' },
+            { key: 'max_tokens', value: '4096 → 8192', desc: 'Allow longer agent responses' },
+            { key: 'temperature', value: '0.3 → 0.5', desc: 'More creative reasoning' },
+            { key: 'retry_cap', value: '3 → 5', desc: 'More retries before giving up' },
           ].map((c) => (
             <div key={c.key} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-container border border-outline-variant/15">
               <span className="font-mono text-[10px] font-bold text-primary w-24 shrink-0">{c.key}</span>
@@ -850,7 +850,7 @@ query_artifact("abc123") → { phases: [...], tasks: [...] }`} />
   },
   {
     label: 'Batch execution',
-    detail: 'The architectural reversal. 15\u201330 tool calls per execution became 1 call. Each tool call resends full history. Fewer calls = dramatically fewer input tokens. $3 \u2192 $0.86.',
+    detail: 'The architectural reversal. 15\u201330 tool calls per execution became 1 call. Each tool call resends full history. Fewer calls = dramatically fewer input tokens. $3 → $0.86.',
     visual: (
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
@@ -876,7 +876,7 @@ query_artifact("abc123") → { phases: [...], tasks: [...] }`} />
           </div>
         </div>
         <div className="rounded-lg bg-primary/5 border border-primary/15 px-3 py-2 text-[10px] text-on-surface">
-          <strong>71% cost reduction.</strong> Fine-grained tools still exist for failure recovery and surgical edits \u2014 but the happy path is one deterministic batch call.
+          <strong>71% cost reduction.</strong> Fine-grained tools still exist for failure recovery and surgical edits — but the happy path is one deterministic batch call.
         </div>
       </div>
     ),

@@ -113,7 +113,7 @@ if (!sessionId) {
   {
     num: 3,
     title: 'Browser checks for existing session events',
-    what: 'The frontend asks the backend: "Are there any past events for this sessionId?" If yes \u2014 this is a refresh, replay them. If no \u2014 this is a fresh session, send the greeting.',
+    what: 'The frontend asks the backend: "Are there any past events for this sessionId?" If yes — this is a refresh, replay them. If no — this is a fresh session, send the greeting.',
     actors: ['browser', 'railway', 'redis'],
     flows: (
       <div className="space-y-2">
@@ -140,7 +140,7 @@ Accept: text/event-stream`} />
         </div>
       </div>
     ),
-    whyMatters: 'POST /agent is special \u2014 it doesn\u2019t close immediately like normal HTTP. The server keeps it open and streams events back as the agent works. This is Server-Sent Events (SSE).',
+    whyMatters: 'POST /agent is special — it doesn\u2019t close immediately like normal HTTP. The server keeps it open and streams events back as the agent works. This is Server-Sent Events (SSE).',
   },
   {
     num: 5,
@@ -158,7 +158,7 @@ HGETALL session:{id}:remember`} />
         </div>
       </div>
     ),
-    whyMatters: 'The backend is stateless \u2014 every request rebuilds the full session from Redis. This means the backend can be restarted, redeployed, or scaled horizontally without losing user sessions.',
+    whyMatters: 'The backend is stateless — every request rebuilds the full session from Redis. This means the backend can be restarted, redeployed, or scaled horizontally without losing user sessions.',
   },
   {
     num: 6,
@@ -184,7 +184,7 @@ event: tool_use_start — get_rocketlane_context`} />
   {
     num: 7,
     title: 'Backend forwards events to browser via SSE',
-    what: 'As Claude streams chunks to the backend, the backend forwards each chunk as an SSE event to the browser \u2014 AND saves it to Redis simultaneously.',
+    what: 'As Claude streams chunks to the backend, the backend forwards each chunk as an SSE event to the browser — AND saves it to Redis simultaneously.',
     actors: ['railway', 'redis', 'browser'],
     flows: (
       <div className="space-y-2">
@@ -218,7 +218,7 @@ event: tool_use_start — get_rocketlane_context`} />
 })`} />
       </div>
     ),
-    whyMatters: 'Claude itself never executes code. It generates a structured request. The dispatcher reads that request and routes it to the right function in our backend. This is the entire trust model \u2014 the agent reasons, our code acts.',
+    whyMatters: 'Claude itself never executes code. It generates a structured request. The dispatcher reads that request and routes it to the right function in our backend. This is the entire trust model — the agent reasons, our code acts.',
   },
   {
     num: 9,
@@ -273,7 +273,7 @@ api-key: <decrypted from Redis>`} />
 })`} />
       </div>
     ),
-    whyMatters: 'Note: only the SUMMARY goes back to Claude. The full context lives in the artifact store in Redis. This is what keeps token costs low \u2014 a 60-row plan would cost $3/run if we sent it back every turn. With artifacts, it costs $0.86.',
+    whyMatters: 'Note: only the SUMMARY goes back to Claude. The full context lives in the artifact store in Redis. This is what keeps token costs low — a 60-row plan would cost $3/run if we sent it back every turn. With artifacts, it costs $0.86.',
   },
   {
     num: 11,
@@ -285,7 +285,7 @@ api-key: <decrypted from Redis>`} />
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
             <div className="text-[11px] font-bold text-emerald-700 mb-1.5">Path A: Loop continues</div>
-            <p className="text-[10px] text-emerald-800">Claude calls another tool \u2014 e.g. parse_csv, validate_plan. Back to Step 6.</p>
+            <p className="text-[10px] text-emerald-800">Claude calls another tool — e.g. parse_csv, validate_plan. Back to Step 6.</p>
           </div>
           <div className="rounded-lg border border-rose-200 bg-rose-50 p-3">
             <div className="text-[11px] font-bold text-rose-700 mb-1.5">Path B: Loop pauses</div>
@@ -305,11 +305,11 @@ api-key: <decrypted from Redis>`} />
         <div className="text-[11px] text-on-surface-variant italic px-3">\u2191 Loop resumes from Step 5 with the user\u2019s answer added to history</div>
       </div>
     ),
-    whyMatters: 'request_user_approval is the ONLY tool that pauses the loop. Every other tool returns immediately. This is what makes the agent feel responsive \u2014 it only stops when it genuinely needs human input.',
+    whyMatters: 'request_user_approval is the ONLY tool that pauses the loop. Every other tool returns immediately. This is what makes the agent feel responsive — it only stops when it genuinely needs human input.',
   },
   {
     num: 12,
-    title: 'Agent finishes \u2014 emits done event, saves session',
+    title: 'Agent finishes — emits done event, saves session',
     what: 'When Claude says stop_reason: end_turn AND there are no more tool_uses to handle, the loop exits. Backend saves final session state to Redis and closes the SSE connection.',
     actors: ['anthropic', 'railway', 'redis', 'browser'],
     flows: (
@@ -464,14 +464,14 @@ export default function SessionExplainerPage() {
                     disabled={stage === 1}
                     className="flex-1 px-3 py-2 text-xs font-semibold rounded-lg bg-surface-container border border-outline-variant/30 text-on-surface-variant disabled:opacity-30 hover:border-primary/30 transition-colors"
                   >
-                    \u2190 Previous
+                    ← Previous
                   </button>
                   <button
                     onClick={() => setStage((s) => Math.min(STAGES.length, s + 1))}
                     disabled={stage === STAGES.length}
                     className="flex-1 px-3 py-2 text-xs font-semibold rounded-lg bg-primary text-on-primary disabled:opacity-30 transition-colors"
                   >
-                    Next \u2192
+                    Next →
                   </button>
                 </div>
               </div>
